@@ -19,6 +19,7 @@ To install, activate your CKAN virtualenv and then do:
     git clone 'https://github.com/ckan/ckanext-oauth2waad.git'
     cd ckanext-persona
     python setup.py develop
+    pip install -r requirements.txt
 
 Add 'oauth2waad' to the `ckan.plugins` line in your CKAN config file, for
 example:
