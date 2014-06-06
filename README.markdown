@@ -17,17 +17,18 @@ ckanext-oauth2waad has been tested against the CKAN 2.3 development version.
 To install, activate your CKAN virtualenv and then do:
 
     git clone 'https://github.com/ckan/ckanext-oauth2waad.git'
-    cd ckanext-persona
+    cd ckanext-oauth2waad
     python setup.py develop
     pip install -r requirements.txt
 
-Add 'oauth2waad' to the `ckan.plugins` line in your CKAN config file, for
+Add `oauth2waad` to the `ckan.plugins` line in your CKAN config file, for
 example:
 
     ckan.plugins = resource_proxy stats datastore oauth2waad
 
 Add the following settings to the `[app:main]` section of your config file:
 
+    [app:main]
     ckanext.oauth2waad.client_id = <YOUR_CLIENT_ID>
     ckanext.oauth2waad.redirect_uri = <YOUR_REDIRECT_URI>
     ckanext.oauth2waad.auth_endpoint = https://login.windows.net/common/oauth2/authorize
@@ -37,7 +38,7 @@ Add the following settings to the `[app:main]` section of your config file:
 Finally, restart your web server.
 
 **Note:** If your `redirect_uri` is an `https://` URI your CKAN site will have
-to be setup rto respond to HTTPS requests.
+to be setup to respond to HTTPS requests.
 
 
 Access token and refresh token
