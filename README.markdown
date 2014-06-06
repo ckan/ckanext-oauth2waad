@@ -21,13 +21,14 @@ To install, activate your CKAN virtualenv and then do:
     python setup.py develop
     pip install -r requirements.txt
 
-Add 'oauth2waad' to the `ckan.plugins` line in your CKAN config file, for
+Add `oauth2waad` to the `ckan.plugins` line in your CKAN config file, for
 example:
 
     ckan.plugins = resource_proxy stats datastore oauth2waad
 
 Add the following settings to the `[app:main]` section of your config file:
 
+    [app:main]
     ckanext.oauth2waad.client_id = <YOUR_CLIENT_ID>
     ckanext.oauth2waad.redirect_uri = <YOUR_REDIRECT_URI>
     ckanext.oauth2waad.auth_endpoint = https://login.windows.net/common/oauth2/authorize
@@ -59,7 +60,6 @@ the following:
 
 You can now serve CKAN on https://localhost:5000. Your browser will obviously complain about
 a wrong certificate being used. **Do not** do this on a production site.
-
 
 
 Access token and refresh token
