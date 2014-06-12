@@ -1,6 +1,8 @@
 '''This extension's plugin classes and their immediate helper functions.'''
 import uuid
 import urllib
+import calendar
+import time
 
 import requests
 
@@ -55,6 +57,58 @@ def _waad_auth_code_request_url():
     }
     query_string = urllib.urlencode(params)
     return _waad_auth_endpoint() + '?' + query_string
+
+
+class CannotRefreshAccessTokenError(Exception):
+    pass
+
+
+def _refresh_access_token_if_expiring():
+    '''Refresh the WAAD access token, if it has expired or will expire soon.
+
+    '''
+    refresh_token = pylons.session.get('ckanext-oauth2waad-refresh-token')
+    expires_on = pylons.session.get('ckanext-oauth2waad-expires-on')
+
+    if not refresh_token:
+        raise CannotRefreshAccessTokenError(
+                "Couldn't find refresh_token in session")
+
+    if not expires_on:
+        raise CannotRefreshAccessTokenError(
+                "Couldn't find expires_on time in session")
+
+    now = calendar.timegm(time.gmtime())
+    five_minutes = 60*5
+
+    try:
+        expires_on_int = int(expires_on)
+    except ValueError:
+        raise InvalidAccessTokenResponse(
+            "Couldn't convert expires_on time to int")
+
+    if now < expires_on_int - five_minutes:
+        # The current access token is not expired or about to expire.
+        return
+
+    # Refresh the access token.
+
+    data = {
+        'client_id': _waad_client_id(),
+        'grant_type': 'refresh_token',
+        'refresh_token': refresh_token,
+        'resource': _waad_resource(),
+        }
+    response = requests.post(_waad_auth_token_endpoint(), data=data)
+
+    new_access_token = response.json().get('access_token')
+    new_refresh_token = response.json().get('refresh_token')
+    new_expires_on = response.json().get('expires_on')
+
+    pylons.session['ckanext-oauth2waad-access-token'] = new_access_token
+    pylons.session['ckanext-oauth2waad-refresh-token'] = new_refresh_token
+    pylons.session['ckanext-oauth2waad-expires-on'] = new_expires_on
+    pylons.session.save()
 
 
 class OAuth2WAADPlugin(plugins.SingletonPlugin):
@@ -124,6 +178,7 @@ class OAuth2WAADPlugin(plugins.SingletonPlugin):
         user = pylons.session.get('ckanext-oauth2waad-user')
         if user:
             toolkit.c.user = user
+            _refresh_access_token_if_expiring()
 
     def _delete_session_items(self):
         '''Delete any session items created by this plugin.'''
@@ -166,6 +221,10 @@ def _generate_password():
     return str(uuid.uuid4())
 
 
+class InvalidAccessTokenResponse(Exception):
+    pass
+
+
 def _get_user_details_from_waad(waad_auth_code):
     '''Use an auth code to get an access token and user details from WAAD.'''
     data = {
@@ -180,6 +239,7 @@ def _get_user_details_from_waad(waad_auth_code):
     response = requests.post(_waad_auth_token_endpoint(), data=data)
     waad_access_token = response.json().get('access_token')
     waad_refresh_token = response.json().get('refresh_token')
+    waad_expires_on = response.json().get('expires_on')
     waad_id_token = response.json().get('id_token')
 
     jwt_payload = jwt.decode(waad_id_token, waad_access_token, verify=False)
@@ -187,10 +247,17 @@ def _get_user_details_from_waad(waad_auth_code):
     given_name = jwt_payload.get('given_name')
     oid = jwt_payload.get('oid')
 
-    return waad_access_token, waad_refresh_token, oid, given_name, family_name
+    return {
+        'access_token': waad_access_token,
+        'refresh_token': waad_refresh_token,
+        'expires_on': waad_expires_on,
+        'oid': oid,
+        'given_name': given_name,
+        'family_name': family_name,
+        }
 
 
-def _log_the_user_in(access_token, refresh_token, oid, given_name,
+def _log_the_user_in(access_token, refresh_token, expires_on, oid, given_name,
                      family_name):
     '''Log the user into CKAN, creating an account for them if necessary.
 
@@ -201,6 +268,9 @@ def _log_the_user_in(access_token, refresh_token, oid, given_name,
     :param refresh_token: The user's OAuth 2.0 refresh token from WAAD.
         If logging the user in succeeds this will be saved in the session for
         other code to access.
+
+    :param expires_on: The time when the access token expires, given in seconds
+        since the UNIX epoch
 
     :param oid: The user's OID (object identifier) from WAAD. This will be used
         as the unique user name for the user's CKAN account.
@@ -244,6 +314,7 @@ def _log_the_user_in(access_token, refresh_token, oid, given_name,
     pylons.session['ckanext-oauth2waad-user'] = user['name']
     pylons.session['ckanext-oauth2waad-access-token'] = access_token
     pylons.session['ckanext-oauth2waad-refresh-token'] = refresh_token
+    pylons.session['ckanext-oauth2waad-expires-on'] = expires_on
     pylons.session.save()
 
     return user
@@ -260,11 +331,10 @@ class WAADRedirectController(toolkit.BaseController):
         if 'code' in params:
             waad_auth_code = params.get('code')
 
-            access_token, refresh_token, oid, given_name, family_name = (
-                _get_user_details_from_waad(waad_auth_code))
+            # TODO: Handle InvalidAccessTokenResponse exceptions.
+            details = _get_user_details_from_waad(waad_auth_code)
 
-            user = _log_the_user_in(access_token, refresh_token, oid,
-                                    given_name, family_name)
+            user = _log_the_user_in(**details)
 
             toolkit.redirect_to(controller='user', action='dashboard',
                                 id=user['name'])
