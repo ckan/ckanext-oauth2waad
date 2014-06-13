@@ -225,18 +225,34 @@ class InvalidAccessTokenResponse(Exception):
     pass
 
 
-def _get_user_details_from_waad(waad_auth_code):
-    '''Use an auth code to get an access token and user details from WAAD.'''
+def _get_user_details_from_waad(auth_code, client_id, redirect_uri, resource,
+                                endpoint):
+    '''Use an auth code to get an access token and user details from WAAD.
+
+    :param auth_code: The WAAD authorization code
+
+    :param client_id: The WAAD client ID
+
+    :param redirect_uri: The WAAD redirect URI
+
+    :param resource: The WAAD resource
+
+    :param endpoint: The WAAD endpoint URL to post the access token request to
+
+    :returns: A dictionary containing the access token, refresh token, expiry
+        time of the access token, and details of the authorized user from WAAD
+
+    '''
     data = {
-        'client_id': _waad_client_id(),
-        'code': waad_auth_code,
+        'client_id': client_id,
+        'code': auth_code,
         'grant_type': 'authorization_code',
-        'redirect_uri': _waad_redirect_uri(),
-        'resource': _waad_resource(),
+        'redirect_uri': redirect_uri,
+        'resource': resource,
         }
 
     # TODO: Handle timeouts, failed requests.
-    response = requests.post(_waad_auth_token_endpoint(), data=data)
+    response = requests.post(endpoint, data=data)
     waad_access_token = response.json().get('access_token')
     waad_refresh_token = response.json().get('refresh_token')
     waad_expires_on = response.json().get('expires_on')
@@ -332,7 +348,9 @@ class WAADRedirectController(toolkit.BaseController):
             waad_auth_code = params.get('code')
 
             # TODO: Handle InvalidAccessTokenResponse exceptions.
-            details = _get_user_details_from_waad(waad_auth_code)
+            details = _get_user_details_from_waad(waad_auth_code,
+                    _waad_client_id(), _waad_redirect_uri(), _waad_resource(),
+                    _waad_auth_token_endpoint())
 
             user = _log_the_user_in(**details)
 
