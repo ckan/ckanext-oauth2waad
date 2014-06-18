@@ -265,29 +265,32 @@ def _get_user_details_from_waad(auth_code, client_id, redirect_uri, resource,
 
     try:
         waad_access_token = response_json['access_token']
-    except KeyError:
+    except Exception:
         raise InvalidAccessTokenResponse(
             'access_token was missing from the response body')
 
     try:
         waad_refresh_token = response_json['refresh_token']
-    except KeyError:
+    except Exception:
         raise InvalidAccessTokenResponse(
             'refresh_token was missing from the response body')
 
     try:
         waad_expires_on = response_json['expires_on']
-    except KeyError:
+    except Exception:
         raise InvalidAccessTokenResponse(
             'expires_on was missing from the response body')
 
     try:
         waad_id_token = response_json['id_token']
-    except KeyError:
+    except Exception:
         raise InvalidAccessTokenResponse(
             'id_token was missing from the response body')
 
-    jwt_payload = jwt.decode(waad_id_token, waad_access_token, verify=False)
+    try:
+        jwt_payload = jwt.decode(waad_id_token, waad_access_token, verify=False)
+    except Exception:
+        raise InvalidAccessTokenResponse("Couldn't decode the JWT payload")
     family_name = jwt_payload.get('family_name')
     given_name = jwt_payload.get('given_name')
     oid = jwt_payload.get('oid')

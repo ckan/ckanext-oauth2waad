@@ -110,6 +110,7 @@ def test_get_user_details_from_waad():
     assert details.get('family_name') == payload['family_name']
 
 
+@httpretty.activate
 def test_get_user_details_from_waad_with_missing_access_token():
     '''Test _get_user_details_from_waad() when the access_token is missing
     from the JSON that the WAAD server returns.
@@ -138,6 +139,7 @@ def test_get_user_details_from_waad_with_missing_access_token():
 
 # TODO: Tests for other missing keys in response JSON.
 
+@httpretty.activate
 def test_get_user_details_from_waad_with_no_json():
     '''Test _get_user_details_from_waad() when there's no JSON in the response
     body.
@@ -146,7 +148,7 @@ def test_get_user_details_from_waad_with_no_json():
     def request_callback(request, url, headers):
         '''Our mock WAAD server response.'''
         # Return a response with no body.
-        return (200, headers)
+        return (200, headers, '')
 
     # The WAAD auth token endpoint to post to. We will mock this.
     endpoint = 'https://login.windows.net/common/oauth2/token'
@@ -159,6 +161,7 @@ def test_get_user_details_from_waad_with_no_json():
                              endpoint)
 
 
+@httpretty.activate
 def test_get_user_details_from_waad_when_json_is_not_a_dict():
     '''Test _get_user_details_from_waad() when there is a JSON response body
     but it's not a top-level JSON object.
@@ -180,6 +183,7 @@ def test_get_user_details_from_waad_when_json_is_not_a_dict():
                              endpoint)
 
 
+@httpretty.activate
 def test_get_user_details_from_waad_with_bad_jwt_payload():
     '''Test _get_user_details_from_waad() when the JWT token from the WAAD
     server is bad.'''
