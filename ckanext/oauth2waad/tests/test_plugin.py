@@ -48,7 +48,7 @@ def test_get_user_details_post_params():
     resource = 'resource'
 
     # The WAAD auth token endpoint to post to. We will mock this.
-    endpoint = 'https://login.windows.net/common/oauth2/token'
+    endpoint = 'https://fake.waad.auth/token/endpoint'
 
     callback_was_called = [False]  # We have to use a list here because
                                    # Python 2 doesn't have nonlocal.
@@ -95,7 +95,7 @@ def test_get_user_details_from_waad():
         return (200, headers, body)
 
     # The WAAD auth token endpoint to post to. We will mock this.
-    endpoint = 'https://login.windows.net/common/oauth2/token'
+    endpoint = 'https://fake.waad.auth/token/endpoint'
     httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
 
     details = plugin._get_user_details_from_waad(
@@ -128,7 +128,7 @@ def test_get_user_details_from_waad_with_missing_access_token():
         return (200, headers, body)
 
     # The WAAD auth token endpoint to post to. We will mock this.
-    endpoint = 'https://login.windows.net/common/oauth2/token'
+    endpoint = 'https://fake.waad.auth/token/endpoint'
     httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
 
     nose.tools.assert_raises(plugin.InvalidAccessTokenResponse,
@@ -151,7 +151,7 @@ def test_get_user_details_from_waad_with_no_json():
         return (200, headers, '')
 
     # The WAAD auth token endpoint to post to. We will mock this.
-    endpoint = 'https://login.windows.net/common/oauth2/token'
+    endpoint = 'https://fake.waad.auth/token/endpoint'
     httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
 
     nose.tools.assert_raises(plugin.InvalidAccessTokenResponse,
@@ -173,7 +173,7 @@ def test_get_user_details_from_waad_when_json_is_not_a_dict():
         return (200, headers, json.dumps([1,2,3]))
 
     # The WAAD auth token endpoint to post to. We will mock this.
-    endpoint = 'https://login.windows.net/common/oauth2/token'
+    endpoint = 'https://fake.waad.auth/token/endpoint'
     httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
 
     nose.tools.assert_raises(plugin.InvalidAccessTokenResponse,
@@ -196,7 +196,7 @@ def test_get_user_details_from_waad_with_bad_jwt_payload():
         return (200, headers, json.dumps(response_params))
 
     # The WAAD auth token endpoint to post to. We will mock this.
-    endpoint = 'https://login.windows.net/common/oauth2/token'
+    endpoint = 'https://fake.waad.auth/token/endpoint'
     httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
 
     nose.tools.assert_raises(plugin.InvalidAccessTokenResponse,
