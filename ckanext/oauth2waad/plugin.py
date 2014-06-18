@@ -5,6 +5,7 @@ import calendar
 import time
 
 import requests
+import simplejson
 
 import pylons
 import jwt
@@ -242,6 +243,9 @@ def _get_user_details_from_waad(auth_code, client_id, redirect_uri, resource,
     :returns: A dictionary containing the access token, refresh token, expiry
         time of the access token, and details of the authorized user from WAAD
 
+    :raises: :py:class:`InvalidAccessTokenResponse` if there's anything wrong
+        with the response from the WAAD server
+
     '''
     data = {
         'client_id': client_id,
@@ -253,10 +257,35 @@ def _get_user_details_from_waad(auth_code, client_id, redirect_uri, resource,
 
     # TODO: Handle timeouts, failed requests.
     response = requests.post(endpoint, data=data)
-    waad_access_token = response.json().get('access_token')
-    waad_refresh_token = response.json().get('refresh_token')
-    waad_expires_on = response.json().get('expires_on')
-    waad_id_token = response.json().get('id_token')
+    try:
+        response_json = response.json()
+    except simplejson.scanner.JSONDecodeError:
+        raise InvalidAccessTokenResponse(
+            "The response body could not be decoded as JSON")
+
+    try:
+        waad_access_token = response_json['access_token']
+    except KeyError:
+        raise InvalidAccessTokenResponse(
+            'access_token was missing from the response body')
+
+    try:
+        waad_refresh_token = response_json['refresh_token']
+    except KeyError:
+        raise InvalidAccessTokenResponse(
+            'refresh_token was missing from the response body')
+
+    try:
+        waad_expires_on = response_json['expires_on']
+    except KeyError:
+        raise InvalidAccessTokenResponse(
+            'expires_on was missing from the response body')
+
+    try:
+        waad_id_token = response_json['id_token']
+    except KeyError:
+        raise InvalidAccessTokenResponse(
+            'id_token was missing from the response body')
 
     jwt_payload = jwt.decode(waad_id_token, waad_access_token, verify=False)
     family_name = jwt_payload.get('family_name')
