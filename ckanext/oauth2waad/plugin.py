@@ -64,12 +64,12 @@ class CannotRefreshAccessTokenError(Exception):
     pass
 
 
-def _refresh_access_token_if_expiring():
+def _refresh_access_token_if_expiring(session, client_id, resource, endpoint):
     '''Refresh the WAAD access token, if it has expired or will expire soon.
 
     '''
-    refresh_token = pylons.session.get('ckanext-oauth2waad-refresh-token')
-    expires_on = pylons.session.get('ckanext-oauth2waad-expires-on')
+    refresh_token = session.get('ckanext-oauth2waad-refresh-token')
+    expires_on = session.get('ckanext-oauth2waad-expires-on')
 
     if not refresh_token:
         raise CannotRefreshAccessTokenError(
@@ -85,7 +85,7 @@ def _refresh_access_token_if_expiring():
     try:
         expires_on_int = int(expires_on)
     except ValueError:
-        raise InvalidAccessTokenResponse(
+        raise CannotRefreshAccessTokenError(
             "Couldn't convert expires_on time to int")
 
     if now < expires_on_int - five_minutes:
@@ -95,21 +95,41 @@ def _refresh_access_token_if_expiring():
     # Refresh the access token.
 
     data = {
-        'client_id': _waad_client_id(),
+        'client_id': client_id,
         'grant_type': 'refresh_token',
         'refresh_token': refresh_token,
-        'resource': _waad_resource(),
+        'resource': resource,
         }
-    response = requests.post(_waad_auth_token_endpoint(), data=data)
+    try:
+        response = requests.post(endpoint, data=data)
+    except requests.exceptions.ConnectionError:
+        raise CannotRefreshAccessTokenError
 
-    new_access_token = response.json().get('access_token')
-    new_refresh_token = response.json().get('refresh_token')
-    new_expires_on = response.json().get('expires_on')
+    try:
+        response_json = response.json()
+    except simplejson.scanner.JSONDecodeError:
+        raise CannotRefreshAccessTokenError(
+            "Couldn't parse the response body as JSON")
 
-    pylons.session['ckanext-oauth2waad-access-token'] = new_access_token
-    pylons.session['ckanext-oauth2waad-refresh-token'] = new_refresh_token
-    pylons.session['ckanext-oauth2waad-expires-on'] = new_expires_on
-    pylons.session.save()
+    try:
+        new_access_token = response_json['access_token']
+    except Exception:
+        raise CannotRefreshAccessTokenError("No access_token in response JSON")
+
+    try:
+        new_refresh_token = response_json['refresh_token']
+    except Exception:
+        raise CannotRefreshAccessTokenError("No refresh_token in response JSON")
+
+    try:
+        new_expires_on = response_json['expires_on']
+    except Exception:
+        raise CannotRefreshAccessTokenError("No expires_on in response JSON")
+
+    session['ckanext-oauth2waad-access-token'] = new_access_token
+    session['ckanext-oauth2waad-refresh-token'] = new_refresh_token
+    session['ckanext-oauth2waad-expires-on'] = new_expires_on
+    session.save()
 
 
 class OAuth2WAADPlugin(plugins.SingletonPlugin):
@@ -179,7 +199,10 @@ class OAuth2WAADPlugin(plugins.SingletonPlugin):
         user = pylons.session.get('ckanext-oauth2waad-user')
         if user:
             toolkit.c.user = user
-            _refresh_access_token_if_expiring()
+            _refresh_access_token_if_expiring(pylons.session,
+                                              _waad_client_id(),
+                                              _waad_resource(),
+                                              _waad_auth_token_endpoint())
 
     def _delete_session_items(self):
         '''Delete any session items created by this plugin.'''
