@@ -10,6 +10,7 @@ import mock
 import pylons
 import pylons.config as config
 import webtest
+import requests
 
 import ckan.plugins.toolkit as toolkit
 import ckan.new_tests.factories as factories
@@ -27,7 +28,7 @@ def _jwt_payload():
     return {
         'family_name': 'fake family_name',
         'given_name': 'fake given_name',
-        'oid': 'fake oid',
+        'oid': 'fake_oid',
         }
 
 
@@ -618,6 +619,45 @@ class TestOAuth2WAADPlugin():
         response = self.app.get('/')
         assert mock_c.user is None
 
+    # We want to mock pylons.session in this test so we can insert an
+    # authorized WAAD user into it. Unfortunately pylons.session has many
+    # names in CKAN, and we have to mock each one of them that our request
+    # hits or we get crashes.
+    @mock.patch('pylons.session')
+    @mock.patch('ckan.lib.helpers.session')
+    @mock.patch('ckan.lib.base.session')
+    def test_logout(self, mock_base_session, mock_helpers_session,
+                    mock_session):
+
+        session_dict = {}
+        def getitem(name):
+            return session_dict[name]
+        def get(name):
+            return session_dict.get(name)
+        def setitem(name, value):
+            session_dict[name] = value
+        def delitem(name):
+            del session_dict[name]
+        def iter_():
+            return session_dict.__iter__()
+        def contains(name):
+            return (name in session_dict)
+        mock_session.__getitem__.side_effect = getitem
+        mock_session.get.side_effect = get
+        mock_session.__setitem__.side_effect = setitem
+        mock_session.__delitem__.side_effect = delitem
+        mock_session.__iter__.side_effect = iter_
+        mock_session.__contains__.side_effect = contains
+
+        _do_login(self.app)
+
+        self.app.get(toolkit.url_for(controller='user', action='logout'))
+
+        assert 'ckanext-oauth2waad-user' not in mock_session
+        assert 'ckanext-oauth2waad-refresh-token' not in mock_session
+        assert 'ckanext-oauth2waad-expires-on' not in mock_session
+        assert 'ckanext-oauth2waad-access-token' not in mock_session
+
 
 @mock.patch('ckan.plugins.toolkit.get_action')
 def test_log_the_user_in_when_user_account_exists(mock_get_action):
@@ -769,7 +809,90 @@ def test_log_the_user_in_validation_error(mock_get_action):
     assert not mock_session.called
 
 
-# TODO: One functional test of actually logging in using the frontend
-# (will require a mock post to the WAAD redirect URI).
+@httpretty.activate
+def _do_login(app,
+              params='?code=fake_auth_code&session_state=fake_session_state'):
+    '''Do a login via the web UI and return the user dashboard HTML page
+    response that we finally get.'''
 
-# TODO: Test logging out.
+    # Load the CKAN login page and find the WAAD login link.
+    login_url = toolkit.url_for(controller='user', action='login')
+    response = app.get(login_url)
+    soup = response.html
+    link = soup.find(id='waad-login-link')
+
+    # Mock the WAAD server.
+    location = '/' + config['ckanext.oauth2waad.redirect_uri'].split('/', 3)[-1]
+    location = location + params
+    endpoint = config['ckanext.oauth2waad.auth_endpoint']
+    httpretty.register_uri(httpretty.GET, endpoint, body='', status=302,
+                           adding_headers={'location': location})
+
+    # Mock the WAAD server.
+    endpoint = config['ckanext.oauth2waad.auth_token_endpoint']
+    httpretty.register_uri(
+        httpretty.POST, endpoint, status=200,
+        body=json.dumps(_access_token_response_dict(_jwt_payload())))
+
+    # Click on the WAAD login link.
+    response = requests.get(link['href'], allow_redirects=False)
+
+    # Mock the browser redirect.
+    response = app.get(response.headers['location'])
+
+    # Sometimes we get redirected to the user dashboard.
+    if response.status_int == 302:
+        response = response.follow()
+
+    return response
+
+
+class TestWAADRedirectController:
+
+    '''Functional tests for the WAADRedirectController class.'''
+
+    @classmethod
+    def setup_class(cls):
+        import ckan.config.middleware
+        cls.app = ckan.config.middleware.make_app(config['global_conf'],
+                                                  **config)
+        cls.app = webtest.TestApp(cls.app)
+
+    def setup(self):
+        import ckan.model as model
+        model.Session.close_all()
+        model.repo.rebuild_db()
+
+    def test_login(self):
+        response = _do_login(self.app)
+        assert response.html.find('a', title='View profile').find(
+            class_='username').text == 'fake given_name fake family_name'
+
+    @mock.patch('ckan.plugins.toolkit.get_action')
+    def test_login_with_user_create_exception(self, mock_get_action):
+
+        mock_user_show = mock.MagicMock()
+        mock_user_show.side_effect = toolkit.ObjectNotFound
+        mock_user_create = mock.MagicMock()
+        def raise_validation_error(*args, **kwargs):
+            raise toolkit.ValidationError('Error!')
+        mock_user_create.side_effect = raise_validation_error
+        def get_action(name):
+            if name == 'user_show':
+                return mock_user_show
+            elif name == 'user_create':
+                return mock_user_create
+            else:
+                assert False, ("This mock expects that no actions except "
+                            "user_show and user_create will be called")
+        mock_get_action.side_effect = get_action
+
+        response = _do_login(self.app)
+        response.mustcontain("Creating your CKAN user account failed")
+
+    def test_login_with_no_code(self):
+        '''Test login() when there's no code in the redirect_uri request
+        params.'''
+        response = _do_login(self.app, params='')
+        assert response.status_int == 200
+        assert not response.body
