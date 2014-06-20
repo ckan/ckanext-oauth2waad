@@ -61,11 +61,30 @@ def _waad_auth_code_request_url():
 
 
 class CannotRefreshAccessTokenError(Exception):
+    '''The exception that is raised when refreshing the access token using the
+    refresh token fails for any reason.'''
     pass
 
 
 def _refresh_access_token_if_expiring(session, client_id, resource, endpoint):
     '''Refresh the WAAD access token, if it has expired or will expire soon.
+
+    Makes a request to the WAAD server to get a new access_token and
+    refresh_token using the existing refresh_token.
+
+    If the existing access_token is not due to expire, no request is made.
+
+    :param session: The pylons.session object for the current request, the
+        refresh_token and expires_on time will be taken from this
+
+    :param client_id: The WAAD client ID
+
+    :param resource: The WAAD resource
+
+    :param endpoint: The WAAD endpoint to make the request to
+
+    :raises: :py:class:`CannotRefreshAccessTokenError` if refreshing the
+        access token fails for any reason
 
     '''
     refresh_token = session.get('ckanext-oauth2waad-refresh-token')
