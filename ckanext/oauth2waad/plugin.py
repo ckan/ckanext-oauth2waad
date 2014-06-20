@@ -12,6 +12,7 @@ import jwt
 
 import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
+import ckan.lib.helpers as helpers
 
 
 def _get_config_setting_or_crash(key):
@@ -151,6 +152,13 @@ def _refresh_access_token_if_expiring(session, client_id, resource, endpoint):
     session.save()
 
 
+def _get_domain_name_from_url(url):
+    '''Return just the domain name part (e.g. stackoverflow.com) from the given
+    URL (e.g. http://stackoverflow.com/foo/bar).'''
+    import urlparse
+    return urlparse.urlparse(url).netloc
+
+
 class OAuth2WAADPlugin(plugins.SingletonPlugin):
 
     '''A plugin for logging into CKAN using WAAD's implementation of OAuth 2.0.
@@ -218,10 +226,25 @@ class OAuth2WAADPlugin(plugins.SingletonPlugin):
         user = pylons.session.get('ckanext-oauth2waad-user')
         if user:
             toolkit.c.user = user
-            _refresh_access_token_if_expiring(pylons.session,
-                                              _waad_client_id(),
-                                              _waad_resource(),
-                                              _waad_auth_token_endpoint())
+            endpoint = _waad_auth_token_endpoint()
+            try:
+                _refresh_access_token_if_expiring(pylons.session,
+                                                  _waad_client_id(),
+                                                  _waad_resource(),
+                                                  endpoint)
+            except CannotRefreshAccessTokenError:
+                domain_name = _get_domain_name_from_url(endpoint)
+                logout_url = toolkit.url_for(controller='user',
+                                             action='logout')
+                message = toolkit._(
+                    "Refreshing your Windows Azure Active Directory OAuth 2.0 "
+                    "access token with {domain} failed. Some functionality "
+                    "may not be available. You can try "
+                    '<a href="{logout}">logging out</a> and logging in again '
+                    "to fix the issue.").format(domain=domain_name,
+                                                logout=logout_url)
+                helpers.flash(message, category='alert-error', allow_html=True,
+                              ignore_duplicate=True)
 
     def _delete_session_items(self):
         '''Delete any session items created by this plugin.'''

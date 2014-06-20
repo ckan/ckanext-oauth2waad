@@ -6,6 +6,12 @@ import time
 import httpretty
 import jwt
 import nose.tools
+import mock
+import pylons
+import pylons.config as config
+import webtest
+
+import ckan.new_tests.factories as factories
 
 import ckanext.oauth2waad.plugin as plugin
 
@@ -454,3 +460,124 @@ def test_refresh_access_token_with_invalid_expires_on():
         plugin.CannotRefreshAccessTokenError,
         plugin._refresh_access_token_if_expiring,
         mock_session, 'fake client id', 'fake resource', endpoint)
+
+
+class TestOAuth2WAADPlugin():
+
+    '''Functional tests for the OAuth2WAADPlugin class.'''
+
+    @classmethod
+    def setup_class(cls):
+        import ckan.config.middleware
+        cls.app = ckan.config.middleware.make_app(config['global_conf'],
+                                                  **config)
+        cls.app = webtest.TestApp(cls.app)
+
+    def setup(self):
+        import ckan.model as model
+        model.Session.close_all()
+        model.repo.rebuild_db()
+
+    # We want to mock pylons.session in this test so we can insert an
+    # authorized WAAD user into it. Unfortunately pylons.session has many
+    # names in CKAN, and we have to mock each one of them that our request
+    # hits or we get crashes.
+    @mock.patch('ckanext.oauth2waad.plugin._refresh_access_token_if_expiring')
+    @mock.patch('pylons.session')
+    @mock.patch('ckan.lib.helpers.session')
+    @mock.patch('ckan.lib.base.session')
+    def test_identify_should_call_refresh_access_token(
+        self, mock_base_session, mock_helpers_session, mock_session,
+        mock_refresh_function):
+        '''When a user is logged in via WAAD identify() should call
+        _refresh_access_token_if_expiring().'''
+
+        user = factories.User()
+
+        session_dict = {'ckanext-oauth2waad-user': user['name']}
+        def getitem(name):
+            return session_dict[name]
+        def get(name):
+            return session_dict.get(name)
+        def setitem(name, val):
+            session_dict[name] = val
+        mock_session.__getitem__.side_effect = getitem
+        mock_session.get.side_effect = get
+        mock_session.__setitem__.side_effect = setitem
+
+        extra_environ = {'REMOTE_USER': str(user['name'])}
+
+        response = self.app.get('/', extra_environ=extra_environ)
+
+        mock_refresh_function.assert_called_once_with(
+            pylons.session, config['ckanext.oauth2waad.client_id'],
+            config['ckanext.oauth2waad.resource'],
+            config['ckanext.oauth2waad.auth_token_endpoint'])
+
+    @mock.patch('ckanext.oauth2waad.plugin._refresh_access_token_if_expiring')
+    def test_identify_should_not_call_refresh_access_token(
+            self, mock_refresh_function):
+        '''When no user is logged in via WAAD identify() should not call
+        _refresh_access_token_if_expiring().'''
+
+        # We'll have a normal logged-in user.
+        user = factories.User()
+        extra_environ = {'REMOTE_USER': str(user['name'])}
+
+        response = self.app.get('/', extra_environ=extra_environ)
+
+        assert not mock_refresh_function.called
+
+    # We want to mock pylons.session in this test so we can insert an
+    # authorized WAAD user into it. Unfortunately pylons.session has many
+    # names in CKAN, and we have to mock each one of them that our request
+    # hits or we get crashes.
+    @mock.patch('ckan.lib.helpers.flash')
+    @mock.patch('ckanext.oauth2waad.plugin._refresh_access_token_if_expiring')
+    @mock.patch('pylons.session')
+    @mock.patch('ckan.lib.helpers.session')
+    @mock.patch('ckan.lib.base.session')
+    def test_identify_when_refresh_fails(
+        self, mock_base_session, mock_helpers_session, mock_session,
+        mock_refresh_function, mock_flash_function):
+        '''Test identify()'s behaviour when _refresh_access_token_if_expiring()
+        raises an exception.'''
+
+        user = factories.User()
+
+        mock_refresh_function.side_effect = (
+            plugin.CannotRefreshAccessTokenError("Boom!"))
+
+        # We need a mock session so we can insert ckanext-oauth2waad-user into
+        # it.
+        session_dict = {'ckanext-oauth2waad-user': user['name']}
+        def getitem(name):
+            return session_dict[name]
+        def get(name):
+            return session_dict.get(name)
+        def setitem(name, val):
+            session_dict[name] = val
+        mock_session.__getitem__.side_effect = getitem
+        mock_session.get.side_effect = get
+        mock_session.__setitem__.side_effect = setitem
+
+        extra_environ = {'REMOTE_USER': str(user['name'])}
+
+        response = self.app.get('/', extra_environ=extra_environ)
+
+        mock_refresh_function.assert_called_once_with(
+            pylons.session, config['ckanext.oauth2waad.client_id'],
+            config['ckanext.oauth2waad.resource'],
+            config['ckanext.oauth2waad.auth_token_endpoint'])
+
+        mock_flash_function.assert_called_once_with(
+            'Refreshing your Windows Azure Active Directory OAuth 2.0 access '
+            'token with fake.waad.auth failed. Some functionality may not be '
+            'available. You can try <a href="/user/_logout">logging out</a> '
+            'and logging in again to fix the issue.', ignore_duplicate=True,
+            category='alert-error', allow_html=True)
+
+
+    # TODO: Test _log_the_user_in()
+
+    # TODO: Test WAADRedirectController's login() method.
