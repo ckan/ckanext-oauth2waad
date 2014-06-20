@@ -578,7 +578,45 @@ class TestOAuth2WAADPlugin():
             'and logging in again to fix the issue.', ignore_duplicate=True,
             category='alert-error', allow_html=True)
 
-    # TODO: Test that identify() sets toolkit.c.user.
+    # We want to mock pylons.session in this test so we can insert an
+    # authorized WAAD user into it. Unfortunately pylons.session has many
+    # names in CKAN, and we have to mock each one of them that our request
+    # hits or we get crashes.
+    @mock.patch('ckan.plugins.toolkit.c', new_callable=mock.PropertyMock)
+    @mock.patch('pylons.session')
+    @mock.patch('ckan.lib.helpers.session')
+    @mock.patch('ckan.lib.base.session')
+    def test_identify_should_set_user(
+        self, mock_base_session, mock_helpers_session, mock_session, mock_c):
+        '''Test that identify() sets toolkit.c.user if a user is logged-in
+        via WAAD.'''
+
+        user = factories.User()
+
+        session_dict = {'ckanext-oauth2waad-user': user['name']}
+        def getitem(name):
+            return session_dict[name]
+        def get(name):
+            return session_dict.get(name)
+        mock_session.__getitem__.side_effect = getitem
+        mock_session.get.side_effect = get
+
+        extra_environ = {'REMOTE_USER': str(user['name'])}
+
+        response = self.app.get('/', extra_environ=extra_environ)
+
+        assert mock_c.user == user['name']
+
+    @mock.patch('ckan.plugins.toolkit.c', new_callable=mock.PropertyMock)
+    @mock.patch('ckanext.oauth2waad.plugin._refresh_access_token_if_expiring')
+    def test_identify_should_not_set_user(
+            self, mock_refresh_function, mock_c):
+        '''When no user is logged in via WAAD identify() should not set c.user.
+
+        '''
+        mock_c.user = None
+        response = self.app.get('/')
+        assert mock_c.user is None
 
 
 @mock.patch('ckan.plugins.toolkit.get_action')
