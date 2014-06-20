@@ -370,8 +370,14 @@ def _get_user_details_from_waad(auth_code, client_id, redirect_uri, resource,
         }
 
 
+class CouldNotCreateUserException(Exception):
+    '''The exception that is raised when creating a new CKAN user for a given
+    WAAD user fails.'''
+    pass
+
+
 def _log_the_user_in(access_token, refresh_token, expires_on, oid, given_name,
-                     family_name):
+                     family_name, session):
     '''Log the user into CKAN, creating an account for them if necessary.
 
     :param access_token: The user's OAuth 2.0 access token from WAAD.
@@ -394,8 +400,14 @@ def _log_the_user_in(access_token, refresh_token, expires_on, oid, given_name,
     :param family_name: The user's family name. This will be used for the full
         name in the user's CKAN account.
 
+    :param session: The Pylons session for this thread, items will be added to
+        it that let other code know that a user is logged-in via WAAD.
+
     :returns: the logged-in user
     :rtype: dictionary
+
+    :raises: :py:class:`CouldNotCreateUserException` if creating a new CKAN
+        user for the authorized WAAD user fails.
 
     '''
     user = _get_user(oid)
@@ -416,19 +428,21 @@ def _log_the_user_in(access_token, refresh_token, expires_on, oid, given_name,
         # email for the user from WAAD. Can we get one somehow?
         email = 'foo'
 
-        # TODO: Handle exceptions.
-        user = toolkit.get_action('user_create')(
-            context={'ignore_auth': True},
-            data_dict={'name': oid,
-                       'fullname': fullname,
-                       'password': _generate_password(),
-                       'email': 'foo'})
+        try:
+            user = toolkit.get_action('user_create')(
+                context={'ignore_auth': True},
+                data_dict={'name': oid,
+                        'fullname': fullname,
+                        'password': _generate_password(),
+                        'email': 'foo'})
+        except Exception as e:
+            raise CouldNotCreateUserException(e)
 
-    pylons.session['ckanext-oauth2waad-user'] = user['name']
-    pylons.session['ckanext-oauth2waad-access-token'] = access_token
-    pylons.session['ckanext-oauth2waad-refresh-token'] = refresh_token
-    pylons.session['ckanext-oauth2waad-expires-on'] = expires_on
-    pylons.session.save()
+    session['ckanext-oauth2waad-user'] = user['name']
+    session['ckanext-oauth2waad-access-token'] = access_token
+    session['ckanext-oauth2waad-refresh-token'] = refresh_token
+    session['ckanext-oauth2waad-expires-on'] = expires_on
+    session.save()
 
     return user
 
@@ -449,7 +463,15 @@ class WAADRedirectController(toolkit.BaseController):
                     _waad_client_id(), _waad_redirect_uri(), _waad_resource(),
                     _waad_auth_token_endpoint())
 
-            user = _log_the_user_in(**details)
+            try:
+                user = _log_the_user_in(session=pylons.session, **details)
+            except CouldNotCreateUserException as e:
+                message = toolkit._(
+                    "Creating your CKAN user account failed: {error}".format(
+                        error=e))
+                helpers.flash(message, category='alert-error', allow_html=True,
+                              ignore_duplicate=True)
+                toolkit.redirect_to(controller='user', action='login')
 
             toolkit.redirect_to(controller='user', action='dashboard',
                                 id=user['name'])

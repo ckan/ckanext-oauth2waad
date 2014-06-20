@@ -11,6 +11,7 @@ import pylons
 import pylons.config as config
 import webtest
 
+import ckan.plugins.toolkit as toolkit
 import ckan.new_tests.factories as factories
 
 import ckanext.oauth2waad.plugin as plugin
@@ -577,7 +578,160 @@ class TestOAuth2WAADPlugin():
             'and logging in again to fix the issue.', ignore_duplicate=True,
             category='alert-error', allow_html=True)
 
+    # TODO: Test that identify() sets toolkit.c.user.
 
-    # TODO: Test _log_the_user_in()
 
-    # TODO: Test WAADRedirectController's login() method.
+@mock.patch('ckan.plugins.toolkit.get_action')
+def test_log_the_user_in_when_user_account_exists(mock_get_action):
+    '''Test _log_the_user_in() when the user account already exists in CKAN.
+
+    '''
+    # The fake CKAN user.
+    fake_user = {
+        'name': 'fake_user',
+        'fullname': 'Fake User',
+        }
+    fake_given_name = 'Fake'
+    fake_family_name = 'User'
+
+    # We need to mock get_action and user_show to avoid hitting CKAN.
+    mock_user_show = mock.MagicMock()
+    mock_user_show.return_value = fake_user
+
+    def get_action(name):
+        if name == 'user_show':
+            return mock_user_show
+        else:
+            assert False, "No action other than user_show should be called"
+    mock_get_action.side_effect = get_action
+
+    mock_session = MockPylonsSession()
+
+    user_dict = plugin._log_the_user_in(
+        'fake access token', 'fake refresh token', 'fake expires on',
+        fake_user['name'], fake_given_name, fake_family_name, mock_session)
+
+    # Assert that the right stuff was added into the session.
+    assert mock_session['ckanext-oauth2waad-user'] == fake_user['name']
+    assert mock_session['ckanext-oauth2waad-access-token'] == (
+        'fake access token')
+    assert mock_session['ckanext-oauth2waad-refresh-token'] == (
+        'fake refresh token')
+    assert mock_session['ckanext-oauth2waad-expires-on'] == 'fake expires on'
+
+    # Assert the _log_the_user_in() returned the right value.
+    assert user_dict['name'] == fake_user['name']
+    assert user_dict['fullname'] == fake_user['fullname']
+
+
+@mock.patch('ckan.plugins.toolkit.get_action')
+def test_log_the_user_in_when_user_account_does_not_exist(mock_get_action):
+    '''Test _log_the_user_in() when the user account does not yet exist.'''
+
+    # The fake CKAN user that we expect to be created.
+    fake_user = {
+        'name': 'fake_user',
+        'fullname': 'Fake User',
+        }
+    fake_given_name = 'Fake'
+    fake_family_name = 'User'
+
+    # We need to mock get_action, user_show and user_create to avoid hitting
+    # CKAN.
+    mock_user_show = mock.MagicMock()
+    mock_user_show.side_effect = toolkit.ObjectNotFound
+    mock_user_create = mock.MagicMock()
+    mock_user_create.return_value = fake_user
+
+    def get_action(name):
+        if name == 'user_show':
+            return mock_user_show
+        elif name == 'user_create':
+            return mock_user_create
+        else:
+            assert False, ("This mock expects that no actions except "
+                           "user_show and user_create will be called")
+    mock_get_action.side_effect = get_action
+
+    mock_session = MockPylonsSession()
+
+    user_dict = plugin._log_the_user_in(
+        'fake access token', 'fake refresh token', 'fake expires on',
+        fake_user['name'], fake_given_name, fake_family_name, mock_session)
+
+    # Assert that user_create was called as expected.
+    assert mock_user_create.call_count == 1
+    positional_args, keyword_args = mock_user_create.call_args
+    assert keyword_args['context'] == {'ignore_auth': True}
+    assert keyword_args['data_dict']['name'] == fake_user['name']
+    assert keyword_args['data_dict']['fullname'] == fake_user['fullname']
+
+    # Assert that the right stuff was added into the session.
+    assert mock_session['ckanext-oauth2waad-user'] == fake_user['name']
+    assert mock_session['ckanext-oauth2waad-access-token'] == (
+        'fake access token')
+    assert mock_session['ckanext-oauth2waad-refresh-token'] == (
+        'fake refresh token')
+    assert mock_session['ckanext-oauth2waad-expires-on'] == 'fake expires on'
+
+    # Assert the _log_the_user_in() returned the right value.
+    assert user_dict['name'] == fake_user['name']
+    assert user_dict['fullname'] == fake_user['fullname']
+
+
+@mock.patch('ckan.plugins.toolkit.get_action')
+def test_log_the_user_in_validation_error(mock_get_action):
+    '''Test _log_the_user_in() when user_create raises a ValidationError.'''
+
+    # The fake CKAN user that we'll try to creatre.
+    # The user name is not a valid user name (not that it matters - we'll use
+    # a mock user_create to raise the ValidationError anyway.
+    fake_user = {
+        'name': 'this is not a valid user name because it has spaces in it',
+        'fullname': 'Fake User',
+        }
+    fake_given_name = 'Fake'
+    fake_family_name = 'User'
+
+    # We need to mock get_action, user_show and user_create to avoid hitting
+    # CKAN.
+    mock_user_show = mock.MagicMock()
+    mock_user_show.side_effect = toolkit.ObjectNotFound
+    mock_user_create = mock.MagicMock()
+    def raise_validation_error(*args, **kwargs):
+        raise toolkit.ValidationError('Error!')
+    mock_user_create.side_effect = raise_validation_error
+
+    def get_action(name):
+        if name == 'user_show':
+            return mock_user_show
+        elif name == 'user_create':
+            return mock_user_create
+        else:
+            assert False, ("This mock expects that no actions except "
+                           "user_show and user_create will be called")
+    mock_get_action.side_effect = get_action
+
+    mock_session = mock.MagicMock()
+
+    nose.tools.assert_raises(plugin.CouldNotCreateUserException,
+                             plugin._log_the_user_in, 'fake access token',
+                             'fake refresh token', 'fake expires on',
+                             fake_user['name'], fake_given_name,
+                             fake_family_name, mock_session)
+
+    # Assert that user_create was called as expected.
+    assert mock_user_create.call_count == 1
+    positional_args, keyword_args = mock_user_create.call_args
+    assert keyword_args['context'] == {'ignore_auth': True}
+    assert keyword_args['data_dict']['name'] == fake_user['name']
+    assert keyword_args['data_dict']['fullname'] == fake_user['fullname']
+
+    # Nothing should have been added into the session.
+    assert not mock_session.called
+
+
+# TODO: One functional test of actually logging in using the frontend
+# (will require a mock post to the WAAD redirect URI).
+
+# TODO: Test logging out.
