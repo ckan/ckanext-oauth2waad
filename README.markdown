@@ -62,22 +62,41 @@ You can now serve CKAN on https://localhost:5000. Your browser will obviously co
 a wrong certificate being used. **Do not** do this on a production site.
 
 
-Access token and refresh token
-------------------------------
+Accessing the WAAD access token
+-------------------------------
 
-When a user is logged-in via WAAD, the oauth2waad plugin adds the access token
-and refresh token from WAAD to the session. Other code can use these tokens to
+When a user is logged-in via WAAD, the oauth2waad plugin adds the WAAD access
+token to the Pylons session. Code from other plugins can use this token to
 access the WAAD resource:
 
     access_token = pylons.session.get('ckanext-oauth2waad-access-token')
-    refresh_token = pylons.session.get('ckanext-oauth2waad-refresh-token')
 
 You generally want to use the `access_token` as part of the headers of your
 requests to the resource, following the Bearer scheme:
 
-    Authorization: Bearer <auth_token>
+    Authorization: Bearer <access_token>
 
 Check the Microsoft Azure documentation for more details:
 
  * [Authorization Code Grant Flow](http://msdn.microsoft.com/en-us/library/azure/dn645542.aspx)
  * [Best Practices for OAuth 2.0 in Azure AD](http://msdn.microsoft.com/en-us/library/azure/dn645536.aspx)
+
+
+Refreshing the WAAD access token
+--------------------------------
+
+The oauth2waad plugin will automatically try to refresh the WAAD access token
+when it's due to expire by using the refresh token as described in the
+[WAAD OAuth 2.0 docs](http://msdn.microsoft.com/en-us/library/azure/dn645542.aspx).
+
+If some code from another plugin wants to force an access token refresh attempt
+(for example, because an API request to the WAAD resource seems to be failing)
+it can do so by calling the `refresh_access_token()` function:
+
+    import ckanext.oauth2waad.plugin
+
+    try:
+        ckanext.oauth2waad.plugin.refresh_access_token()
+    except ckanext.oauth2waad.plugin.CannotRefreshAccessTokenError:
+        # Well, we tried.
+        pass

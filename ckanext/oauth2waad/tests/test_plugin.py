@@ -246,6 +246,49 @@ def _now():
     return calendar.timegm(time.gmtime())
 
 
+@mock.patch('ckanext.oauth2waad.plugin._refresh_access_token')
+@mock.patch('pylons.session')
+@mock.patch('ckanext.oauth2waad.plugin._waad_client_id')
+@mock.patch('ckanext.oauth2waad.plugin._waad_resource')
+@mock.patch('ckanext.oauth2waad.plugin._waad_auth_token_endpoint')
+def test_refresh_access_token(
+        mock_endpoint_function, mock_resource_function,
+        mock_client_id_function, mock_session, mock_refresh_function):
+    '''Quick test that the refresh_access_token() public function calls
+    _refresh_access_token() correctly.'''
+
+    mock_refresh_function.return_value = 'mock return value'
+    mock_client_id_function.return_value = 'mock client id'
+    mock_resource_function.return_value = 'mock resource'
+    mock_endpoint_function.return_value = 'mock endpoint'
+
+    return_value = plugin.refresh_access_token()
+
+    assert mock_refresh_function.called_once_with(
+        mock_session, 'mock client id', 'mock resource', 'mock endpoint')
+    assert return_value == 'mock return value'
+
+
+@mock.patch('ckanext.oauth2waad.plugin._refresh_access_token')
+@mock.patch('pylons.session')
+@mock.patch('ckanext.oauth2waad.plugin._waad_client_id')
+@mock.patch('ckanext.oauth2waad.plugin._waad_resource')
+@mock.patch('ckanext.oauth2waad.plugin._waad_auth_token_endpoint')
+def test_refresh_access_token_with_exception(
+        mock_endpoint_function, mock_resource_function,
+        mock_client_id_function, mock_session, mock_refresh_function):
+    '''refresh_access_token() should not catch a CannotRefreshAccessTokenError
+    raised by _refresh_access_token().'''
+
+    mock_refresh_function.side_effect = plugin.CannotRefreshAccessTokenError
+    mock_client_id_function.return_value = 'mock client id'
+    mock_resource_function.return_value = 'mock resource'
+    mock_endpoint_function.return_value = 'mock endpoint'
+
+    nose.tools.assert_raises(plugin.CannotRefreshAccessTokenError,
+                             plugin.refresh_access_token)
+
+
 @httpretty.activate
 def test_refresh_access_token_when_not_expiring():
     '''Test _refresh_access_token_if_expiring() when the access token is

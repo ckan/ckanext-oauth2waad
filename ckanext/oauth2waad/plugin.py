@@ -67,52 +67,18 @@ class CannotRefreshAccessTokenError(Exception):
     pass
 
 
-def _refresh_access_token_if_expiring(session, client_id, resource, endpoint):
-    '''Refresh the WAAD access token, if it has expired or will expire soon.
+def _refresh_access_token(session, client_id, resource, endpoint):
+    '''Refresh the WAAD access token using the refresh token.
 
-    Makes a request to the WAAD server to get a new access_token and
-    refresh_token using the existing refresh_token.
-
-    If the existing access_token is not due to expire, no request is made.
-
-    :param session: The pylons.session object for the current request, the
-        refresh_token and expires_on time will be taken from this
-
-    :param client_id: The WAAD client ID
-
-    :param resource: The WAAD resource
-
-    :param endpoint: The WAAD endpoint to make the request to
-
-    :raises: :py:class:`CannotRefreshAccessTokenError` if refreshing the
-        access token fails for any reason
+    This is a private helper function for refresh_access_token() and
+    _refresh_access_token_if_expiring() that handles the actual refresh
+    request and response with the WAAD server.
 
     '''
     refresh_token = session.get('ckanext-oauth2waad-refresh-token')
-    expires_on = session.get('ckanext-oauth2waad-expires-on')
-
     if not refresh_token:
         raise CannotRefreshAccessTokenError(
-                "Couldn't find refresh_token in session")
-
-    if not expires_on:
-        raise CannotRefreshAccessTokenError(
-                "Couldn't find expires_on time in session")
-
-    now = calendar.timegm(time.gmtime())
-    five_minutes = 60*5
-
-    try:
-        expires_on_int = int(expires_on)
-    except ValueError:
-        raise CannotRefreshAccessTokenError(
-            "Couldn't convert expires_on time to int")
-
-    if now < expires_on_int - five_minutes:
-        # The current access token is not expired or about to expire.
-        return
-
-    # Refresh the access token.
+            "Couldn't find refresh_token in session")
 
     data = {
         'client_id': client_id,
@@ -139,7 +105,8 @@ def _refresh_access_token_if_expiring(session, client_id, resource, endpoint):
     try:
         new_refresh_token = response_json['refresh_token']
     except Exception:
-        raise CannotRefreshAccessTokenError("No refresh_token in response JSON")
+        raise CannotRefreshAccessTokenError(
+            "No refresh_token in response JSON")
 
     try:
         new_expires_on = response_json['expires_on']
@@ -150,6 +117,63 @@ def _refresh_access_token_if_expiring(session, client_id, resource, endpoint):
     session['ckanext-oauth2waad-refresh-token'] = new_refresh_token
     session['ckanext-oauth2waad-expires-on'] = new_expires_on
     session.save()
+
+
+# This is a public function for code from other plugins to call to refresh the
+# access token, regardless of whether it's due to expire or not.
+def refresh_access_token():
+    '''Refresh the WAAD access token using the refresh token.
+
+    Send an access token refresh request to the WAAD server, and updates the
+    'ckanext-oauth2waad-access-token', 'ckanext-oauth2waad-refresh-token',
+    and 'ckanext-oauth2waad-expires-on' in the Pylons session.
+
+    :raises: :py:class:`CannotRefreshAccessTokenError` if refreshing the access
+        token fails for any reason.
+
+    '''
+    return _refresh_access_token(
+        pylons.session, _waad_client_id(), _waad_resource(),
+        _waad_auth_token_endpoint())
+
+
+def _refresh_access_token_if_expiring(session, client_id, resource, endpoint):
+    '''Refresh the WAAD access token, if it has expired or will expire soon.
+
+    Makes a request to the WAAD server to get a new access_token and
+    refresh_token using the existing refresh_token.
+
+    If the existing access_token is not due to expire, no request is made.
+
+    :param session: The pylons.session object for the current request, the
+        refresh_token and expires_on time will be taken from this
+
+    :param client_id: The WAAD client ID
+
+    :param resource: The WAAD resource
+
+    :param endpoint: The WAAD endpoint to make the request to
+
+    :raises: :py:class:`CannotRefreshAccessTokenError` if refreshing the
+        access token fails for any reason
+
+    '''
+    expires_on = session.get('ckanext-oauth2waad-expires-on')
+    if not expires_on:
+        raise CannotRefreshAccessTokenError(
+            "Couldn't find expires_on time in session")
+
+    now = calendar.timegm(time.gmtime())
+    five_minutes = 60*5
+
+    try:
+        expires_on_int = int(expires_on)
+    except ValueError:
+        raise CannotRefreshAccessTokenError(
+            "Couldn't convert expires_on time to int")
+
+    if now > expires_on_int - five_minutes:
+        _refresh_access_token(session, client_id, resource, endpoint)
 
 
 def _get_domain_name_from_url(url):
