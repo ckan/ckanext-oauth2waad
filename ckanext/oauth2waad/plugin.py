@@ -261,7 +261,7 @@ class OAuth2WAADPlugin(plugins.SingletonPlugin):
 
     def abort(self, status_code, detail, headers, comment):
         '''Handle an abort.'''
-        self._delete_session_items()
+        return (status_code, detail, headers, comment)
 
     def get_helpers(self):
         '''Return this plugin's template helper functions.'''
