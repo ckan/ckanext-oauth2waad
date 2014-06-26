@@ -50,12 +50,33 @@ def _waad_resource():
     return _get_config_setting_or_crash('ckanext.oauth2waad.resource')
 
 
+def _generate_state_param():
+    '''Return a state parameter for an authorization code request.
+
+    Returns a unique, randomly generated value for use as the state parameter
+    for CSRF (cross-site request forgery) protection in an authorization code
+    request.
+
+    '''
+    return str(uuid.uuid4())
+
+
 def _waad_auth_code_request_url():
     '''Return the WAAD auth code request URL.'''
+
+    state = _generate_state_param()
+
+    # We save the state param in a cookie, because we'll need to retrieve it
+    # later.
+    # FIXME: Don't hardcode the secret.
+    pylons.response.signed_cookie('oauth2waad-state', state, secure=True,
+                                  secret='secret')
+
     params = {
         'redirect_uri': _waad_redirect_uri(),
         'response_type': 'code',
         'client_id': _waad_client_id(),
+        'state': state,
     }
     query_string = urllib.urlencode(params)
     return _waad_auth_endpoint() + '?' + query_string
@@ -471,6 +492,18 @@ def _log_the_user_in(access_token, refresh_token, expires_on, oid, given_name,
     return user
 
 
+def _csrf_check(request, response):
+    '''Return True if the request passes our CSRF check, False otherwise.'''
+    # FIXME: Don't hardcode the secret.
+    cookie_state = request.signed_cookie('oauth2waad-state', 'secret')
+    response.delete_cookie('oauth2waad-state')
+    request_state = request.params.get('state')
+    if cookie_state and (request_state == cookie_state):
+        return True
+    else:
+        return False
+
+
 class WAADRedirectController(toolkit.BaseController):
 
     '''A custom home controller for receiving WAAD authorization responses.'''
@@ -478,24 +511,28 @@ class WAADRedirectController(toolkit.BaseController):
     def login(self):
         '''Handle request to the WAAD redirect_uri.'''
         params = pylons.request.params
+        waad_auth_code = params.get('code')
 
-        if 'code' in params:
-            waad_auth_code = params.get('code')
+        if not waad_auth_code:
+            toolkit.abort(401)
 
-            # TODO: Handle InvalidAccessTokenResponse exceptions.
-            details = _get_user_details_from_waad(waad_auth_code,
-                    _waad_client_id(), _waad_redirect_uri(), _waad_resource(),
-                    _waad_auth_token_endpoint())
+        if not _csrf_check(pylons.request, pylons.response):
+            toolkit.abort(401)
 
-            try:
-                user = _log_the_user_in(session=pylons.session, **details)
-            except CouldNotCreateUserException as e:
-                message = toolkit._(
-                    "Creating your CKAN user account failed: {error}".format(
-                        error=e))
-                helpers.flash(message, category='alert-error', allow_html=True,
-                              ignore_duplicate=True)
-                toolkit.redirect_to(controller='user', action='login')
+        # TODO: Handle InvalidAccessTokenResponse exceptions.
+        details = _get_user_details_from_waad(
+            waad_auth_code, _waad_client_id(), _waad_redirect_uri(),
+            _waad_resource(), _waad_auth_token_endpoint())
 
-            toolkit.redirect_to(controller='user', action='dashboard',
-                                id=user['name'])
+        try:
+            user = _log_the_user_in(session=pylons.session, **details)
+        except CouldNotCreateUserException as exc:
+            message = toolkit._(
+                "Creating your CKAN user account failed: {error}".format(
+                    error=exc))
+            helpers.flash(message, category='alert-error', allow_html=True,
+                            ignore_duplicate=True)
+            toolkit.redirect_to(controller='user', action='login')
+
+        toolkit.redirect_to(controller='user', action='dashboard',
+                            id=user['name'])

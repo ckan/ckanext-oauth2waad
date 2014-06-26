@@ -2,6 +2,7 @@ import json
 import UserDict
 import calendar
 import time
+import urllib
 
 import httpretty
 import jwt
@@ -853,40 +854,87 @@ def test_log_the_user_in_validation_error(mock_get_action):
 
 
 @httpretty.activate
-def _do_login(app,
-              params='?code=fake_auth_code&session_state=fake_session_state'):
-    '''Do a login via the web UI and return the user dashboard HTML page
-    response that we finally get.'''
+def _auth_code_request(app, auth_code='fake_auth_code', state=None):
+    '''Load CKAN's login page, find the "Login with WAAD" link, click on it to
+    make an auth code request to a (mocked) WAAD server, return the auth code
+    response from the server.
 
+    The returned response will be a 302 redirect to CKAN's redirect_uri with
+    the auth_code and state in the URL params.
+
+    '''
     # Load the CKAN login page and find the WAAD login link.
     login_url = toolkit.url_for(controller='user', action='login')
     response = app.get(login_url)
     soup = response.html
     link = soup.find(id='waad-login-link')
 
-    # Mock the WAAD server.
-    location = '/' + config['ckanext.oauth2waad.redirect_uri'].split('/', 3)[-1]
-    location = location + params
-    endpoint = config['ckanext.oauth2waad.auth_endpoint']
-    httpretty.register_uri(httpretty.GET, endpoint, body='', status=302,
-                           adding_headers={'location': location})
+    # Mock the WAAD server's auth code response: a 302 that redirects the
+    # browser back to CKAN's redirect_uri with the auth_code and state in
+    # URL params.
+    def callback(request, uri, headers):
 
-    # Mock the WAAD server.
+        state_ = state
+
+        # Parse the params out of the request URI.
+        # Would be good if we didn't do this manually.
+        request_params = {}
+        for param in uri.split('?', 1)[1].split('&'):
+            key, value = param.split('=', 1)
+            value = value.replace('+', ' ')
+            request_params[key] = value
+        if state_ is None:
+            state_ = request_params.get('state')
+
+        # Compute the location that we'll redirect the browser to, including
+        # the code and state params in the URL.
+        location = '/' + config['ckanext.oauth2waad.redirect_uri'].split('/', 3)[-1]
+        response_params = {}
+        if auth_code:
+            response_params['code'] = auth_code
+        if state_:
+            response_params['state'] = state_
+        response_param_string = urllib.urlencode(response_params)
+        if response_param_string:
+            location = location + '?' + response_param_string
+        headers['location'] = location
+
+        return (302, headers, '')
+    endpoint = config['ckanext.oauth2waad.auth_endpoint']
+    httpretty.register_uri(httpretty.GET, endpoint, body=callback)
+
+    # Click on the WAAD login link.
+    response = requests.get(link['href'], allow_redirects=False)
+
+    return response
+
+
+@httpretty.activate
+def _do_auth_code_redirect(app, redirect):
+
+    # Mock the WAAD server's access token response.
+    # CKAN will make a request to this URL as part of its handling our request
+    # to its redirect_uri below.
     endpoint = config['ckanext.oauth2waad.auth_token_endpoint']
     httpretty.register_uri(
         httpretty.POST, endpoint, status=200,
         body=json.dumps(_access_token_response_dict(_jwt_payload())))
 
-    # Click on the WAAD login link.
-    response = requests.get(link['href'], allow_redirects=False)
-
-    # Mock the browser redirect.
-    response = app.get(response.headers['location'])
+    # Follow the redirect from the mock WAAD server to CKAN's redirect_uri.
+    response = app.get(redirect.headers['location'])
 
     # Sometimes we get redirected to the user dashboard.
     if response.status_int == 302:
         response = response.follow()
 
+    # Finally, return the CKAN page that we ended up on. We should be logged-in
+    # to CKAN now.
+    return response
+
+
+def _do_login(app, auth_code='fake_auth_code'):
+    redirect_response = _auth_code_request(app, auth_code)
+    response = _do_auth_code_redirect(app, redirect_response)
     return response
 
 
@@ -908,8 +956,15 @@ class TestWAADRedirectController:
 
     def test_login(self):
         response = _do_login(self.app)
+
         assert response.html.find('a', title='View profile').find(
-            class_='username').text == 'fake given_name fake family_name'
+            class_='username').text == 'fake given_name fake family_name', (
+            "We should be logged-in")
+
+        # Webtest doesn't seem to actually delete the cookie from the test app,
+        # but it sets its value to an empty string.
+        assert not self.app.cookies['oauth2waad-state'], (
+            "The CSRF cookie should be deleted after it has been used")
 
     @mock.patch('ckan.plugins.toolkit.get_action')
     def test_login_with_user_create_exception(self, mock_get_action):
@@ -936,6 +991,57 @@ class TestWAADRedirectController:
     def test_login_with_no_code(self):
         '''Test login() when there's no code in the redirect_uri request
         params.'''
-        response = _do_login(self.app, params='')
-        assert response.status_int == 200
-        assert not response.body
+        redirect_response = _auth_code_request(self.app, auth_code='')
+        cookie = self.app.cookies['oauth2waad-state']
+        response = _do_auth_code_redirect(self.app, redirect_response)
+
+        # This is brittle, not a very good test.
+        assert response.html.find('a', title='View profile') is None, (
+            "We should not be logged-in")
+        assert 'Login with Windows Azure Active Directory' in response, (
+            "We should be redirected back to the login page")
+
+        assert self.app.cookies['oauth2waad-state'] != cookie, (
+            "The CSRF cookie should be changed after each request")
+
+    def test_login_with_altered_state_cookie(self):
+        '''Test logging in when someone tampers with the CSRF state cookie.
+
+        '''
+        redirect_response = _auth_code_request(self.app)
+        self.app.cookies['oauth2waad-state'] = 'altered cookie value'
+        response = _do_auth_code_redirect(self.app, redirect_response)
+
+        # This is brittle, not a very good test.
+        assert response.html.find('a', title='View profile') is None, (
+            "We should not be logged-in")
+        assert 'Login with Windows Azure Active Directory' in response, (
+            "We should be redirected back to the login page")
+
+    def test_login_with_missing_state_param(self):
+        redirect_response = _auth_code_request(self.app, state='')
+        cookie = self.app.cookies['oauth2waad-state']
+        response = _do_auth_code_redirect(self.app, redirect_response)
+
+        # This is brittle, not a very good test.
+        assert response.html.find('a', title='View profile') is None, (
+            "We should not be logged-in")
+        assert 'Login with Windows Azure Active Directory' in response, (
+            "We should be redirected back to the login page")
+
+        assert self.app.cookies['oauth2waad-state'] != cookie, (
+            "The CSRF cookie should be changed after each request")
+
+    def test_login_with_wrong_state_param(self):
+        redirect_response = _auth_code_request(self.app, state='wrong')
+        cookie = self.app.cookies['oauth2waad-state']
+        response = _do_auth_code_redirect(self.app, redirect_response)
+
+        # This is brittle, not a very good test.
+        assert response.html.find('a', title='View profile') is None, (
+            "We should not be logged-in")
+        assert 'Login with Windows Azure Active Directory' in response, (
+            "We should be redirected back to the login page")
+
+        assert self.app.cookies['oauth2waad-state'] != cookie, (
+            "The CSRF cookie should be changed after each request")
