@@ -50,6 +50,11 @@ def _waad_resource():
     return _get_config_setting_or_crash('ckanext.oauth2waad.resource')
 
 
+def _csrf_secret():
+    '''Return the secret key used to sign our CSRF-protection cookie.'''
+    return _get_config_setting_or_crash('ckanext.oauth2waad.csrf_secret')
+
+
 def _generate_state_param():
     '''Return a state parameter for an authorization code request.
 
@@ -62,15 +67,24 @@ def _generate_state_param():
 
 
 def _waad_auth_code_request_url():
-    '''Return the WAAD auth code request URL.'''
+    '''Return the WAAD auth code request URL.
 
+    The URL contains a UUID (in a URL param) that is different each time this
+    function is called - each time the login page it loaded and the auth code
+    request link rendered, a new UUID is generated. This UUID is used in
+    cross-site request forgery (CSRF) protection.
+
+    This function also saves the CSRF UUID in a cookie each time it's called,
+    so that it can be retrieved later when the same browser makes a request to
+    our redirect_uri.
+
+    '''
     state = _generate_state_param()
 
     # We save the state param in a cookie, because we'll need to retrieve it
     # later.
-    # FIXME: Don't hardcode the secret.
     pylons.response.signed_cookie('oauth2waad-state', state, secure=True,
-                                  secret='secret')
+                                  secret=_csrf_secret())
 
     params = {
         'redirect_uri': _waad_redirect_uri(),
@@ -234,6 +248,7 @@ class OAuth2WAADPlugin(plugins.SingletonPlugin):
         _waad_auth_endpoint()
         _waad_auth_token_endpoint()
         _waad_resource()
+        _csrf_secret()
 
     def before_map(self, map_):
 
@@ -492,10 +507,9 @@ def _log_the_user_in(access_token, refresh_token, expires_on, oid, given_name,
     return user
 
 
-def _csrf_check(request, response):
+def _csrf_check(request, response, secret):
     '''Return True if the request passes our CSRF check, False otherwise.'''
-    # FIXME: Don't hardcode the secret.
-    cookie_state = request.signed_cookie('oauth2waad-state', 'secret')
+    cookie_state = request.signed_cookie('oauth2waad-state', secret)
     response.delete_cookie('oauth2waad-state')
     request_state = request.params.get('state')
     if cookie_state and (request_state == cookie_state):
@@ -516,7 +530,7 @@ class WAADRedirectController(toolkit.BaseController):
         if not waad_auth_code:
             toolkit.abort(401)
 
-        if not _csrf_check(pylons.request, pylons.response):
+        if not _csrf_check(pylons.request, pylons.response, _csrf_secret()):
             toolkit.abort(401)
 
         # TODO: Handle InvalidAccessTokenResponse exceptions.

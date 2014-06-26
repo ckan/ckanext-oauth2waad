@@ -34,14 +34,34 @@ Add the following settings to the `[app:main]` section of your config file:
     ckanext.oauth2waad.auth_endpoint = https://login.windows.net/common/oauth2/authorize
     ckanext.oauth2waad.auth_token_endpoint = https://login.windows.net/common/oauth2/token
     ckanext.oauth2waad.resource = <YOUR_RESOURCE_URL>
+    ckanext.oauth2waad.csrf_secret = <YOUR_SECRET_KEY>
+
+The value for the `ckanext.oauth2waad.csrf_secret` setting should be a long and
+difficult to guess string. This secret key is used to sign a cookie that is
+used for CSRF (cross-site request forgery) protection.
+
+One way to generate a suitable secret key is to generate a UUID. Type the
+following command in a terminal:
+
+    python -c 'import uuid; print uuid.uuid4()'
+
+Copy the command's output and paste it into your config file, for example:
+
+    ckanext.oauth2waad.csrf_secret = 9bda3f56-833d-4005-94fb-090b12e399ef
 
 Finally, restart your web server.
 
-**Note:** If your `redirect_uri` is an `https://` URI your CKAN site will have
-to be setup to respond to HTTPS requests.
 
-A quick way of doing this for a local instance served by paste (ie `https://localhost:5000/_your_redirect_uri`) is
-the following:
+SSL
+---
+
+When using this plugin, your CKAN site should be setup to serve the login
+and redirect_uri pages (or simply all pages) over SSL and the
+`ckanext.oauth2waad.auth_endpoint` setting in your config file should be an
+`https://` URL.
+
+A quick way of doing this for a local instance served by paste
+(ie `https://localhost:5000/_your_redirect_uri`) is the following:
 
 1. Install `libffi-dev`:
 
