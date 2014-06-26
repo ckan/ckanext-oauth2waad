@@ -57,7 +57,7 @@ SSL
 
 When using this plugin, your CKAN site should be setup to serve the login
 and redirect_uri pages (or simply all pages) over SSL and the
-`ckanext.oauth2waad.auth_endpoint` setting in your config file should be an
+`ckanext.oauth2waad.redirect_uri` setting in your config file should be an
 `https://` URL.
 
 A quick way of doing this for a local instance served by paste
