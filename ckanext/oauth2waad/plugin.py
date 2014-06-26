@@ -3,6 +3,7 @@ import uuid
 import urllib
 import calendar
 import time
+import urlparse
 
 import requests
 import simplejson
@@ -66,6 +67,22 @@ def _generate_state_param():
     return str(uuid.uuid4())
 
 
+def _get_domain_name_from_url(url):
+    '''Return just the domain name part (e.g. stackoverflow.com) from the given
+    URL (e.g. http://stackoverflow.com/foo/bar).'''
+    return urlparse.urlparse(url).netloc
+
+
+def _get_path_from_url(url):
+    '''Return just the path part of the given URL.
+
+    For example for https://demo.ckan.org/_waad_redirect_uri returns just
+    /_waad_redirect_uri.
+
+    '''
+    return urlparse.urlparse(url).path
+
+
 def _waad_auth_code_request_url():
     '''Return the WAAD auth code request URL.
 
@@ -83,8 +100,9 @@ def _waad_auth_code_request_url():
 
     # We save the state param in a cookie, because we'll need to retrieve it
     # later.
-    pylons.response.signed_cookie('oauth2waad-state', state, secure=True,
-                                  secret=_csrf_secret())
+    pylons.response.signed_cookie(
+        'oauth2waad-state', state, secure=True, secret=_csrf_secret(),
+        path=_get_path_from_url(_waad_redirect_uri()))
 
     params = {
         'redirect_uri': _waad_redirect_uri(),
@@ -209,13 +227,6 @@ def _refresh_access_token_if_expiring(session, client_id, resource, endpoint):
 
     if now > expires_on_int - five_minutes:
         _refresh_access_token(session, client_id, resource, endpoint)
-
-
-def _get_domain_name_from_url(url):
-    '''Return just the domain name part (e.g. stackoverflow.com) from the given
-    URL (e.g. http://stackoverflow.com/foo/bar).'''
-    import urlparse
-    return urlparse.urlparse(url).netloc
 
 
 class OAuth2WAADPlugin(plugins.SingletonPlugin):
@@ -510,7 +521,8 @@ def _log_the_user_in(access_token, refresh_token, expires_on, oid, given_name,
 def _csrf_check(request, response, secret):
     '''Return True if the request passes our CSRF check, False otherwise.'''
     cookie_state = request.signed_cookie('oauth2waad-state', secret)
-    response.delete_cookie('oauth2waad-state')
+    response.delete_cookie('oauth2waad-state',
+                           path=_get_path_from_url(_waad_redirect_uri()))
     request_state = request.params.get('state')
     if cookie_state and (request_state == cookie_state):
         return True
