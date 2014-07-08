@@ -614,17 +614,25 @@ def _request_service_to_service_access_token(endpoint, client_id,
         raise ServiceToServiceAccessTokenError(
             "ConnectionError when requesting access token")
 
-    response_json = response.json()
     try:
         response_json = response.json()
     except simplejson.scanner.JSONDecodeError:
         raise ServiceToServiceAccessTokenError(
             "Couldn't parse the response body as JSON")
-    access_token = response_json.get('access_token')
-    if not access_token:
+
+    try:
+        response_json = response.json()
+    except simplejson.scanner.JSONDecodeError:
+        raise ServiceToServiceAccessTokenError(
+            "Couldn't parse the response body as JSON")
+    try:
+        access_token = response_json['access_token']
+    except Exception:
         raise ServiceToServiceAccessTokenError("No access_token in response")
-    expires_on = response_json.get('expires_on')
-    if not expires_on:
+
+    try:
+        expires_on = response_json['expires_on']
+    except Exception:
         raise ServiceToServiceAccessTokenError("No expires_on in response")
 
     return (access_token, expires_on)

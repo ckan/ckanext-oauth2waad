@@ -1045,3 +1045,156 @@ class TestWAADRedirectController:
 
         assert self.app.cookies['oauth2waad-state'] != cookie, (
             "The CSRF cookie should be changed after each request")
+
+
+@httpretty.activate
+def test__request_service_to_service_access_token():
+    endpoint = 'https://fake.auth.endpoint/tenant/token'
+    callback_was_called = [False]
+    def request_callback(request, url, headers):
+        '''Our mock WAAD server response.'''
+        callback_was_called[0] = True
+
+        # Parse the params out of the request.
+        # Would be good if we didn't do this manually.
+        params = {}
+        for param in request.body.split('&'):
+            key, value = param.split('=', 1)
+            value = value.replace('+', ' ')
+            params[key] = value
+
+        # Check that the plugin posted the right params.
+        assert params.get('client_id') == 'fake client id'
+        assert params.get('client_secret') == 'fake client secret'
+        assert params.get('grant_type') == 'client_credentials'
+        assert params.get('resource') == 'fake resource'
+
+        body = json.dumps({
+            'access_token': 'fake access_token',
+            'expires_on': 'fake expires_on',
+        })
+        return (200, headers, body)
+    httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
+
+    access_token, expires_on = plugin._request_service_to_service_access_token(
+        endpoint, 'fake client id', 'fake client secret', 'fake resource')
+
+    assert callback_was_called[0] is True
+    assert access_token == 'fake access_token'
+    assert expires_on == 'fake expires_on'
+
+
+def test__request_service_to_service_access_token_endpoint_does_not_respond():
+    nose.tools.assert_raises(
+        plugin.ServiceToServiceAccessTokenError,
+        plugin._request_service_to_service_access_token,
+        'http://this.website.does.not.exist/auth/token', 'fake client id',
+        'fake client secret', 'fake resource')
+
+
+@httpretty.activate
+def test__request_service_to_service_access_token_400():
+    endpoint = 'https://fake.auth.endpoint/tenant/token'
+    callback_was_called = [False]
+    def request_callback(request, url, headers):
+        '''Our mock WAAD server response.'''
+        callback_was_called[0] = True
+        return (400, headers, '')
+    httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
+
+    nose.tools.assert_raises(
+        plugin.ServiceToServiceAccessTokenError,
+        plugin._request_service_to_service_access_token, endpoint,
+        'fake client id', 'fake client secret', 'fake resource')
+    assert callback_was_called[0] is True
+
+
+@httpretty.activate
+def test__request_service_to_service_access_token_no_response_body():
+    endpoint = 'https://fake.auth.endpoint/tenant/token'
+    callback_was_called = [False]
+    def request_callback(request, url, headers):
+        '''Our mock WAAD server response.'''
+        callback_was_called[0] = True
+        return (200, headers, '')
+    httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
+
+    nose.tools.assert_raises(
+        plugin.ServiceToServiceAccessTokenError,
+        plugin._request_service_to_service_access_token, endpoint,
+        'fake client id', 'fake client secret', 'fake resource')
+    assert callback_was_called[0] is True
+
+
+@httpretty.activate
+def test__request_service_to_service_access_token_non_json_body():
+    endpoint = 'https://fake.auth.endpoint/tenant/token'
+    callback_was_called = [False]
+    def request_callback(request, url, headers):
+        '''Our mock WAAD server response.'''
+        callback_was_called[0] = True
+        return (200, headers, 'this is not json')
+    httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
+
+    nose.tools.assert_raises(
+        plugin.ServiceToServiceAccessTokenError,
+        plugin._request_service_to_service_access_token, endpoint,
+        'fake client id', 'fake client secret', 'fake resource')
+    assert callback_was_called[0] is True
+
+
+@httpretty.activate
+def test__request_service_to_service_access_token_json_not_an_object():
+    endpoint = 'https://fake.auth.endpoint/tenant/token'
+    callback_was_called = [False]
+    def request_callback(request, url, headers):
+        '''Our mock WAAD server response.'''
+        callback_was_called[0] = True
+        return (200, headers, '[1,2,3]')
+    httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
+
+    nose.tools.assert_raises(
+        plugin.ServiceToServiceAccessTokenError,
+        plugin._request_service_to_service_access_token, endpoint,
+        'fake client id', 'fake client secret', 'fake resource')
+    assert callback_was_called[0] is True
+
+
+@httpretty.activate
+def test__request_service_to_service_access_token_missing_access_token():
+    endpoint = 'https://fake.auth.endpoint/tenant/token'
+    callback_was_called = [False]
+    def request_callback(request, url, headers):
+        '''Our mock WAAD server response.'''
+        callback_was_called[0] = True
+        body = json.dumps({
+            'expires_on': 'fake expires_on',
+        })
+        return (200, headers, body)
+    httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
+
+    nose.tools.assert_raises(
+        plugin.ServiceToServiceAccessTokenError,
+        plugin._request_service_to_service_access_token, endpoint,
+        'fake client id', 'fake client secret', 'fake resource')
+    assert callback_was_called[0] is True
+
+
+@httpretty.activate
+def test__request_service_to_service_access_token_missing_expires_on():
+    endpoint = 'https://fake.auth.endpoint/tenant/token'
+    callback_was_called = [False]
+    def request_callback(request, url, headers):
+        '''Our mock WAAD server response.'''
+        callback_was_called[0] = True
+        body = json.dumps({
+            'access_token': 'fake access_token',
+        })
+        return (200, headers, body)
+    httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
+
+    nose.tools.assert_raises(
+        plugin.ServiceToServiceAccessTokenError,
+        plugin._request_service_to_service_access_token, endpoint,
+        'fake client id', 'fake client secret', 'fake resource')
+    assert callback_was_called[0] is True
