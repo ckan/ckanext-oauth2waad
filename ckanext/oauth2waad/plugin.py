@@ -56,6 +56,24 @@ def _csrf_secret():
     return _get_config_setting_or_crash('ckanext.oauth2waad.csrf_secret')
 
 
+def _service_to_service_client_id():
+    '''Return the WAAD service-to-service client_id from the config file.'''
+    return _get_config_setting_or_crash(
+            'ckanext.oauth2waad.servicetoservice.client_id')
+
+
+def _service_to_service_client_secret():
+    '''Return the service-to-service client_secret from the config file.'''
+    return _get_config_setting_or_crash(
+            'ckanext.oauth2waad.servicetoservice.client_secret')
+
+
+def _service_to_service_resource():
+    '''Return the WAAD service-to-service resource from the config file.'''
+    return _get_config_setting_or_crash(
+            'ckanext.oauth2waad.servicetoservice.resource')
+
+
 def _generate_state_param():
     '''Return a state parameter for an authorization code request.
 
@@ -260,6 +278,9 @@ class OAuth2WAADPlugin(plugins.SingletonPlugin):
         _waad_auth_token_endpoint()
         _waad_resource()
         _csrf_secret()
+        _service_to_service_resource()
+        _service_to_service_client_id()
+        _service_to_service_client_secret()
 
     def before_map(self, map_):
 
@@ -562,3 +583,78 @@ class WAADRedirectController(toolkit.BaseController):
 
         toolkit.redirect_to(controller='user', action='dashboard',
                             id=user['name'])
+
+
+class ServiceToServiceAccessTokenError(Exception):
+    '''Exception that is raised if anything goes wrong when requesting a
+    service-to-service access token from WAAD.'''
+    pass
+
+
+def _request_service_to_service_access_token(endpoint, client_id,
+                                             client_secret, resource):
+    '''Request a service-to-service access token from WAAD.
+
+    :returns: the access token and its expires_on time.
+    :rtype: 2-tuple of two strings
+
+    :raises: ServiceToServiceAccessTokenError if anything goes wrong when
+        requesting the access token
+
+    '''
+    data = {
+        'grant_type': 'client_credentials',
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'resource': resource,
+        }
+    try:
+        response = requests.post(endpoint, data=data)
+    except requests.exceptions.ConnectionError:
+        raise ServiceToServiceAccessTokenError(
+            "ConnectionError when requesting access token")
+
+    response_json = response.json()
+    try:
+        response_json = response.json()
+    except simplejson.scanner.JSONDecodeError:
+        raise ServiceToServiceAccessTokenError(
+            "Couldn't parse the response body as JSON")
+    access_token = response_json.get('access_token')
+    if not access_token:
+        raise ServiceToServiceAccessTokenError("No access_token in response")
+    expires_on = response_json.get('expires_on')
+    if not expires_on:
+        raise ServiceToServiceAccessTokenError("No expires_on in response")
+
+    return (access_token, expires_on)
+
+
+def request_service_to_service_access_token():
+    '''Get a service-to-service access token from WAAD and return it.
+
+    This function will re-do the access token request each time it's called.
+
+    :raises: ServiceToServiceAccessTokenError if anything goes wrong when
+        requesting the access token
+
+    '''
+    access_token, expires_on = _request_service_to_service_access_token(
+        _waad_auth_token_endpoint(), _service_to_service_client_id(),
+        _service_to_service_client_secret(), _service_to_service_resource())
+    return access_token
+
+
+def service_to_service_access_token():
+    '''Return the WAAD service-to-service access token.
+
+    This function will cache the access token, and only re-do the access token
+    request if we don't already have a cached access token or if the cached
+    access token has expired.
+
+    :raises: ServiceToServiceAccessTokenError if anything goes wrong when
+        requesting the access token
+
+    '''
+    # TODO: Cache the token.
+    return request_service_to_service_access_token()

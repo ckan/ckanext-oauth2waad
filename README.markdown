@@ -31,10 +31,13 @@ Add the following settings to the `[app:main]` section of your config file:
     [app:main]
     ckanext.oauth2waad.client_id = <YOUR_CLIENT_ID>
     ckanext.oauth2waad.redirect_uri = <YOUR_REDIRECT_URI>
-    ckanext.oauth2waad.auth_endpoint = https://login.windows.net/common/oauth2/authorize
-    ckanext.oauth2waad.auth_token_endpoint = https://login.windows.net/common/oauth2/token
+    ckanext.oauth2waad.auth_endpoint = https://login.windows.net/<YOUR_TENANT_ID>/oauth2/authorize
+    ckanext.oauth2waad.auth_token_endpoint = https://login.windows.net/<YOUR_TENANT_ID>/oauth2/token
     ckanext.oauth2waad.resource = <YOUR_RESOURCE_URL>
     ckanext.oauth2waad.csrf_secret = <YOUR_SECRET_KEY>
+    ckanext.oauth2waad.servicetoservice.client_id = <YOUR_CLIENT_ID_FOR_SERVICE_TO_SERVICE_REQUESTS>
+    ckanext.oauth2waad.servicetoservice.client_secret = <YOUR_CLIENT_SECRET_FOR_SERVICE_TO_SERVICE_REQUESTS>
+    ckanext.oauth2waad.servicetoservice.resource = <YOUR_RESOURCE_FOR_SERVICE_TO_SERVICE_REQUESTS>
 
 The value for the `ckanext.oauth2waad.csrf_secret` setting should be a long and
 difficult to guess string. This secret key is used to sign a cookie that is
@@ -48,6 +51,11 @@ following command in a terminal:
 Copy the command's output and paste it into your config file, for example:
 
     ckanext.oauth2waad.csrf_secret = 9bda3f56-833d-4005-94fb-090b12e399ef
+
+The `ckanext.oauth2waad.servicetoservice.*` config settings are optional -
+they're only needed if you're also using another plugin that needs to make
+[service-to-service calls](http://msdn.microsoft.com/en-us/library/azure/dn645543.aspx)
+to a WAAD-authorized resource.
 
 Finally, restart your web server.
 
@@ -118,5 +126,37 @@ it can do so by calling the `refresh_access_token()` function:
     try:
         ckanext.oauth2waad.plugin.refresh_access_token()
     except ckanext.oauth2waad.plugin.CannotRefreshAccessTokenError:
+        # Well, we tried.
+        pass
+
+
+Accessing the service-to-service access token
+---------------------------------------------
+
+If another plugin needs to make [service-to-service calls](http://msdn.microsoft.com/en-us/library/azure/dn645543.aspx)
+using a WAAD OAuth 2.0 service-to-service access token, it can get the token
+from the `ckanext-oauth2waad` plugin's `service_to_service_access_token()`
+function:
+
+    import ckanext.oauth2waad.plugin as oauth2waad_plugin
+
+    try:
+        access_token = oauth2waad_plugin.service_to_service_access_token()
+    except oauth2waad_plugin.ServiceToServiceAccessTokenError:
+        # Well, we tried.
+        pass
+
+The `oauth2waad` plugin caches the access token and only requests a new one if
+there's no cached access token or if the cached token has expired.
+
+To force the plugin to request a new access token (for example, because the
+cached one doesn't seem to be working) call
+`request_service_to_service_access_token()`:
+
+    import ckanext.oauth2waad.plugin as oauth2waad_plugin
+
+    try:
+        access_token = oauth2waad_plugin.request_service_to_service_access_token()
+    except oauth2waad_plugin.ServiceToServiceAccessTokenError:
         # Well, we tried.
         pass
