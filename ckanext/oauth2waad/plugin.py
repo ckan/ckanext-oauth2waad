@@ -16,13 +16,17 @@ import ckan.plugins.toolkit as toolkit
 import ckan.lib.helpers as helpers
 
 
+class OAuth2WAADConfigError(Exception):
+    '''Exception that's raised if an oauth2waad config setting is missing.'''
+    pass
+
 def _get_config_setting_or_crash(key):
     try:
         return pylons.config[key]
     except KeyError:
         message = "ckanext-oauth2waad: missing '{key}' config setting".format(
             key=key)
-        raise Exception(message)
+        raise OAuth2WAADConfigError(message)
 
 
 def _waad_client_id():

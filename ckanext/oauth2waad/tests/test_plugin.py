@@ -1198,3 +1198,86 @@ def test__request_service_to_service_access_token_missing_expires_on():
         plugin._request_service_to_service_access_token, endpoint,
         'fake client id', 'fake client secret', 'fake resource')
     assert callback_was_called[0] is True
+
+
+@mock.patch('pylons.config')
+@mock.patch(
+    'ckanext.oauth2waad.plugin._request_service_to_service_access_token')
+def test_request_service_to_service_access_token(
+        mock_service_to_service_access_token_function, mock_pylons_config):
+
+    def getitem(key):
+        d = {
+            'ckanext.oauth2waad.auth_token_endpoint': 'auth token endpoint',
+            'ckanext.oauth2waad.servicetoservice.client_id': 'client id',
+            'ckanext.oauth2waad.servicetoservice.client_secret': 'secret',
+            'ckanext.oauth2waad.servicetoservice.resource': 'resource',
+        }
+        return d[key]
+    mock_pylons_config.__getitem__.side_effect = getitem
+
+    mock_service_to_service_access_token_function.return_value = (
+        'access_token', 'expires_on')
+
+    token = plugin.request_service_to_service_access_token()
+
+    assert token == 'access_token'
+    mock_service_to_service_access_token_function.assert_called_once_with(
+        'auth token endpoint', 'client id', 'secret', 'resource')
+
+
+@mock.patch('pylons.config')
+@mock.patch(
+    'ckanext.oauth2waad.plugin._request_service_to_service_access_token')
+def test_request_service_to_service_access_token_with_missing_config(
+        mock_service_to_service_access_token_function, mock_pylons_config):
+
+    config = {
+        'ckanext.oauth2waad.auth_token_endpoint': 'auth token endpoint',
+        'ckanext.oauth2waad.servicetoservice.client_id': 'client id',
+        'ckanext.oauth2waad.servicetoservice.client_secret': 'secret',
+        'ckanext.oauth2waad.servicetoservice.resource': 'resource',
+    }
+    def getitem(key):
+        return config[key]
+    mock_pylons_config.__getitem__.side_effect = getitem
+
+    for key in (
+            'ckanext.oauth2waad.auth_token_endpoint',
+            'ckanext.oauth2waad.servicetoservice.client_id',
+            'ckanext.oauth2waad.servicetoservice.client_secret',
+            'ckanext.oauth2waad.servicetoservice.resource'):
+        value = config[key]
+        del config[key]
+
+        nose.tools.assert_raises(
+            plugin.OAuth2WAADConfigError,
+            plugin.request_service_to_service_access_token)
+
+        config[key] = value
+
+    assert not mock_service_to_service_access_token_function.called
+
+
+@mock.patch('pylons.config')
+@mock.patch(
+    'ckanext.oauth2waad.plugin._request_service_to_service_access_token')
+def test_request_service_to_service_access_token_with_exception(
+        mock_service_to_service_access_token_function, mock_pylons_config):
+
+    def getitem(key):
+        d = {
+            'ckanext.oauth2waad.auth_token_endpoint': 'auth token endpoint',
+            'ckanext.oauth2waad.servicetoservice.client_id': 'client id',
+            'ckanext.oauth2waad.servicetoservice.client_secret': 'secret',
+            'ckanext.oauth2waad.servicetoservice.resource': 'resource',
+        }
+        return d[key]
+    mock_pylons_config.__getitem__.side_effect = getitem
+
+    mock_service_to_service_access_token_function.side_effect = (
+        plugin.ServiceToServiceAccessTokenError)
+
+    nose.tools.assert_raises(
+        plugin.ServiceToServiceAccessTokenError,
+        plugin.request_service_to_service_access_token)
