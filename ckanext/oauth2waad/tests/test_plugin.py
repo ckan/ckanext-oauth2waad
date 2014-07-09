@@ -1049,6 +1049,11 @@ class TestWAADRedirectController:
 
 @httpretty.activate
 def test__request_service_to_service_access_token():
+    '''_request_service_to_service_access_token() should post the right params
+    to the WAAD server and return the access_token and expires_on that the WAAD
+    server returns.'''
+
+    # Mock the WAAD server.
     endpoint = 'https://fake.auth.endpoint/tenant/token'
     callback_was_called = [False]
     def request_callback(request, url, headers):
@@ -1085,6 +1090,9 @@ def test__request_service_to_service_access_token():
 
 
 def test__request_service_to_service_access_token_endpoint_does_not_respond():
+    '''_request_service_to_service_access_token() should raise
+    ServiceToServiceAccessTokenError if the WAAD server does not respond.'''
+
     nose.tools.assert_raises(
         plugin.ServiceToServiceAccessTokenError,
         plugin._request_service_to_service_access_token,
@@ -1094,6 +1102,10 @@ def test__request_service_to_service_access_token_endpoint_does_not_respond():
 
 @httpretty.activate
 def test__request_service_to_service_access_token_400():
+    '''_request_service_to_service_access_token() should raise
+    ServiceToServiceAccessTokenError if the WAAD server's response is a 400.'''
+
+    # Mock the WAAD server.
     endpoint = 'https://fake.auth.endpoint/tenant/token'
     callback_was_called = [False]
     def request_callback(request, url, headers):
@@ -1111,6 +1123,11 @@ def test__request_service_to_service_access_token_400():
 
 @httpretty.activate
 def test__request_service_to_service_access_token_no_response_body():
+    '''_request_service_to_service_access_token() should raise
+    ServiceToServiceAccessTokenError if the WAAD server's response has no
+    body.'''
+
+    # Mock the WAAD server.
     endpoint = 'https://fake.auth.endpoint/tenant/token'
     callback_was_called = [False]
     def request_callback(request, url, headers):
@@ -1128,6 +1145,11 @@ def test__request_service_to_service_access_token_no_response_body():
 
 @httpretty.activate
 def test__request_service_to_service_access_token_non_json_body():
+    '''_request_service_to_service_access_token() should raise
+    ServiceToServiceAccessTokenError if the WAAD server's response has a
+    non-JSON body.'''
+
+    # Mock the WAAD server.
     endpoint = 'https://fake.auth.endpoint/tenant/token'
     callback_was_called = [False]
     def request_callback(request, url, headers):
@@ -1145,6 +1167,11 @@ def test__request_service_to_service_access_token_non_json_body():
 
 @httpretty.activate
 def test__request_service_to_service_access_token_json_not_an_object():
+    '''_request_service_to_service_access_token() should raise
+    ServiceToServiceAccessTokenError if the WAAD server returns valid JSON
+    that does not have a top-level object.'''
+
+    # Mock the WAAD server.
     endpoint = 'https://fake.auth.endpoint/tenant/token'
     callback_was_called = [False]
     def request_callback(request, url, headers):
@@ -1162,6 +1189,11 @@ def test__request_service_to_service_access_token_json_not_an_object():
 
 @httpretty.activate
 def test__request_service_to_service_access_token_missing_access_token():
+    '''_request_service_to_service_access_token() should raise
+    ServiceToServiceAccessTokenError if access_token is missing from the WAAD
+    server's response.'''
+
+    # Mock the WAAD server.
     endpoint = 'https://fake.auth.endpoint/tenant/token'
     callback_was_called = [False]
     def request_callback(request, url, headers):
@@ -1182,6 +1214,11 @@ def test__request_service_to_service_access_token_missing_access_token():
 
 @httpretty.activate
 def test__request_service_to_service_access_token_missing_expires_on():
+    '''_request_service_to_service_access_token() should raise
+    ServiceToServiceAccessTokenError if expires_on is missing from the WAAD
+    server's response.'''
+
+    # Mock the WAAD server.
     endpoint = 'https://fake.auth.endpoint/tenant/token'
     callback_was_called = [False]
     def request_callback(request, url, headers):
@@ -1205,7 +1242,11 @@ def test__request_service_to_service_access_token_missing_expires_on():
     'ckanext.oauth2waad.plugin._request_service_to_service_access_token')
 def test_request_service_to_service_access_token(
         mock_service_to_service_access_token_function, mock_pylons_config):
+    '''request_service_to_service_access_token() should call
+    _request_service_to_service_access_token() with the right params from
+    pylons.config and return the result.'''
 
+    # Mock pylons.config.
     def getitem(key):
         d = {
             'ckanext.oauth2waad.auth_token_endpoint': 'auth token endpoint',
@@ -1216,6 +1257,7 @@ def test_request_service_to_service_access_token(
         return d[key]
     mock_pylons_config.__getitem__.side_effect = getitem
 
+    # Mock _request_service_to_service_access_token().
     mock_service_to_service_access_token_function.return_value = (
         'access_token', 'expires_on')
 
@@ -1231,7 +1273,11 @@ def test_request_service_to_service_access_token(
     'ckanext.oauth2waad.plugin._request_service_to_service_access_token')
 def test_request_service_to_service_access_token_with_missing_config(
         mock_service_to_service_access_token_function, mock_pylons_config):
+    '''request_service_to_service_access_token() should raise
+    OAuth2WAADConfigError if one of the config settings it needs is missing
+    from pylons.config'''
 
+    # Mock pylons.config.
     config = {
         'ckanext.oauth2waad.auth_token_endpoint': 'auth token endpoint',
         'ckanext.oauth2waad.servicetoservice.client_id': 'client id',
@@ -1242,18 +1288,24 @@ def test_request_service_to_service_access_token_with_missing_config(
         return config[key]
     mock_pylons_config.__getitem__.side_effect = getitem
 
+    # Test for each of the config settings that the function uses.
     for key in (
             'ckanext.oauth2waad.auth_token_endpoint',
             'ckanext.oauth2waad.servicetoservice.client_id',
             'ckanext.oauth2waad.servicetoservice.client_secret',
             'ckanext.oauth2waad.servicetoservice.resource'):
+
+        # Save the value so we can put it back later.
         value = config[key]
+
+        # Delete the setting from the config.
         del config[key]
 
         nose.tools.assert_raises(
             plugin.OAuth2WAADConfigError,
             plugin.request_service_to_service_access_token)
 
+        # Put the setting back, for the next iteration.
         config[key] = value
 
     assert not mock_service_to_service_access_token_function.called
@@ -1264,7 +1316,12 @@ def test_request_service_to_service_access_token_with_missing_config(
     'ckanext.oauth2waad.plugin._request_service_to_service_access_token')
 def test_request_service_to_service_access_token_with_exception(
         mock_service_to_service_access_token_function, mock_pylons_config):
+    '''request_service_to_service_access_token() should raise
+    ServiceToServiceAccessTokenError if
+    _request_service_to_service_access_token() raises
+    ServiceToServiceAccessTokenError.'''
 
+    # Mock pylons.config.
     def getitem(key):
         d = {
             'ckanext.oauth2waad.auth_token_endpoint': 'auth token endpoint',
