@@ -26,12 +26,12 @@ def service_to_service_access_token():
     '''Return the service-to-service access token cached in the db, or None.'''
 
     try:
-        query = ckan.model.meta.Session.query(ServiceToServiceAccessToken)
+        query = ckan.model.Session.query(ServiceToServiceAccessToken)
         token = query.one()
     except sqlalchemy.exc.ProgrammingError as exc:
         if exc.orig.pgcode == '42P01':
             service_to_service_access_token_table.create()
-            ckan.model.meta.Session.commit()
+            ckan.model.Session.commit()
             token = None
         else:
             raise
@@ -45,8 +45,8 @@ def save_service_to_service_access_token(token, expires_on):
     token_obj = service_to_service_access_token()
     if token_obj is None:
         token_obj = ServiceToServiceAccessToken(token, expires_on)
-        ckan.model.meta.Session.add(token_obj)
+        ckan.model.Session.add(token_obj)
     else:
         token_obj.token = token
         token_obj.expires_on = expires_on
-    ckan.model.meta.Session.commit()
+    ckan.model.Session.commit()
