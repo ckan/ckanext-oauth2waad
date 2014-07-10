@@ -1338,3 +1338,200 @@ def test_request_service_to_service_access_token_with_exception(
     nose.tools.assert_raises(
         plugin.ServiceToServiceAccessTokenError,
         plugin.request_service_to_service_access_token)
+
+
+def _reset_db():
+    import ckan.model as model
+    model.Session.close_all()
+    model.repo.rebuild_db()
+
+
+@httpretty.activate
+def test_service_to_service_access_token_db_table_does_not_exist():
+    '''When the service_to_service_access_token db table doesn't exist yet
+    service_to_service_access_token() should get the token from the WAAD
+    server, create the db table and store the token in it, and return the
+    token.
+
+    '''
+    _reset_db()
+
+    now = _now()
+    ten_minutes = 60 * 10
+    expires_on = str(now + ten_minutes)
+
+    # Mock the WAAD server.
+    endpoint = 'https://fake.waad.auth/token/endpoint'
+    def request_callback(request, url, headers):
+        '''Our mock WAAD server response.'''
+        body = json.dumps({
+            'access_token': 'fake access_token',
+            'expires_on': expires_on
+        })
+        return (200, headers, body)
+    httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
+
+    token = plugin.service_to_service_access_token()
+
+    assert token == 'fake access_token', (
+        "service_to_service_access_token() should return the access token "
+        "from the server")
+
+    import ckan.model
+    import ckanext.oauth2waad.model as model
+    rows = ckan.model.Session.query(model.ServiceToServiceAccessToken).all()
+    assert len(rows) == 1, (
+        "There should never be more than one row in the "
+        "service_to_service_access_token db table")
+    assert rows[0].token == 'fake access_token', (
+        "service_to_service_access_token() should cache the access token in "
+        "the db")
+    assert rows[0].expires_on == expires_on, (
+        "service_to_service_access_token() should caches the expires_on time "
+        "in the db")
+
+
+@httpretty.activate
+def test_service_to_service_access_token_expiring_soon():
+    '''If the access token is due to expire within five minutes, then
+    service_to_service_access_token() should request a new token from the
+    WAAD server, update the cached token, and return the new token.
+
+    '''
+    import ckan.model
+    import ckanext.oauth2waad.model as model
+
+    _reset_db()
+
+    # Put a fake access token that's going to expire soon into the db.
+    now = _now()
+    three_minutes = 60 * 3
+    old_expires_on = str(now + three_minutes)
+    model.save_service_to_service_access_token('old access token',
+                                               old_expires_on)
+
+    # Mock the WAAD server.
+    one_hour = 60 * 60
+    new_expires_on = str(now + one_hour)
+    endpoint = 'https://fake.waad.auth/token/endpoint'
+    def request_callback(request, url, headers):
+        '''Our mock WAAD server response.'''
+        body = json.dumps({
+            'access_token': 'new access_token',
+            'expires_on': new_expires_on
+        })
+        return (200, headers, body)
+    httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
+
+    token = plugin.service_to_service_access_token()
+
+    assert token == 'new access_token', (
+        "service_to_service_access_token() should return the access token "
+        "from the server")
+
+    rows = ckan.model.Session.query(model.ServiceToServiceAccessToken).all()
+    assert len(rows) == 1, (
+        "There should never be more than one row in the "
+        "service_to_service_access_token db table")
+    assert rows[0].token == 'new access_token', (
+        "service_to_service_access_token() should update the cached access "
+        "token in the db")
+    assert rows[0].expires_on == new_expires_on, (
+        "service_to_service_access_token() should update the cached "
+        "expires_on time in the db")
+
+
+@httpretty.activate
+def test_service_to_service_access_token_expired():
+    '''If the access token is expired then service_to_service_access_token()
+    should request a new token from the WAAD server, update the cached token,
+    and return the new token.
+
+    '''
+    import ckan.model
+    import ckanext.oauth2waad.model as model
+
+    _reset_db()
+
+    # Put a fake access token that's expired into the db.
+    now = _now()
+    three_minutes = 60 * 3
+    old_expires_on = str(now - three_minutes)
+    model.save_service_to_service_access_token('old access token',
+                                               old_expires_on)
+
+    # Mock the WAAD server.
+    one_hour = 60 * 60
+    new_expires_on = str(now + one_hour)
+    endpoint = 'https://fake.waad.auth/token/endpoint'
+    def request_callback(request, url, headers):
+        '''Our mock WAAD server response.'''
+        body = json.dumps({
+            'access_token': 'new access_token',
+            'expires_on': new_expires_on
+        })
+        return (200, headers, body)
+    httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
+
+    token = plugin.service_to_service_access_token()
+
+    assert token == 'new access_token', (
+        "service_to_service_access_token() should return the access token "
+        "from the server")
+
+    rows = ckan.model.Session.query(model.ServiceToServiceAccessToken).all()
+    assert len(rows) == 1, (
+        "There should never be more than one row in the "
+        "service_to_service_access_token db table")
+    assert rows[0].token == 'new access_token', (
+        "service_to_service_access_token() should update the cached access "
+        "token in the db")
+    assert rows[0].expires_on == new_expires_on, (
+        "service_to_service_access_token() should update the cached "
+        "expires_on time in the db")
+
+
+@httpretty.activate
+def test_service_to_service_access_token_cached():
+    '''If the cached access token is not expiring soon then
+    service_to_service_access_token() should just return the cached token.'''
+    import ckanext.oauth2waad.model as model
+
+    _reset_db()
+
+    # Put a fake access token into the db.
+    now = _now()
+    one_hour = 60 * 60
+    expires_on = str(now + one_hour)
+    model.save_service_to_service_access_token('cached access token',
+                                               expires_on)
+
+    # Mock the WAAD server.
+    endpoint = 'https://fake.waad.auth/token/endpoint'
+    def request_callback(request, url, headers):
+        '''Our mock WAAD server response.'''
+        assert False ("service_to_service_access_token() shouldn't call the "
+                      "WAAD server if there is a good cached access token")
+    httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
+
+    token = plugin.service_to_service_access_token()
+
+    assert token == 'cached access token', (
+        "service_to_service_access_token() should return the cached token")
+
+
+@mock.patch('ckanext.oauth2waad.model.service_to_service_access_token')
+def test_service_to_service_access_token_bad_expires_on(
+        mock_service_to_service_access_token_function):
+    '''service_to_service_access_token() should raise
+    ServiceToServiceAccessTokenError if it gets a bad access token from the
+    db.'''
+    import ckanext.oauth2waad.model as model
+
+    mock_service_to_service_access_token_function.return_value = (
+        model.ServiceToServiceAccessToken('access token',
+                                          'invalid expires_on string'))
+
+    nose.tools.assert_raises(
+        plugin.ServiceToServiceAccessTokenError,
+        plugin.service_to_service_access_token)

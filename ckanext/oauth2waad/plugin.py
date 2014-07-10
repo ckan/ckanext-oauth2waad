@@ -288,9 +288,6 @@ class OAuth2WAADPlugin(plugins.SingletonPlugin):
         _service_to_service_client_id()
         _service_to_service_client_secret()
 
-        # Setup this plugin's database tables.
-        model.setup()
-
     def before_map(self, map_):
 
         # Get just the path part (after the domain name and port) of the
