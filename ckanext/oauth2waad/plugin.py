@@ -15,6 +15,8 @@ import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
 import ckan.lib.helpers as helpers
 
+import ckanext.oauth2waad.model as model
+
 
 class OAuth2WAADConfigError(Exception):
     '''Exception that's raised if an oauth2waad config setting is missing.'''
@@ -285,6 +287,9 @@ class OAuth2WAADPlugin(plugins.SingletonPlugin):
         _service_to_service_resource()
         _service_to_service_client_id()
         _service_to_service_client_secret()
+
+        # Setup this plugin's database tables.
+        model.setup()
 
     def before_map(self, map_):
 
@@ -651,9 +656,14 @@ def request_service_to_service_access_token():
         requesting the access token
 
     '''
+    # Get a new token from WAAD.
     access_token, expires_on = _request_service_to_service_access_token(
         _waad_auth_token_endpoint(), _service_to_service_client_id(),
         _service_to_service_client_secret(), _service_to_service_resource())
+
+    # Cache the token, overwriting any already-cached copy.
+    model.save_service_to_service_access_token(access_token, expires_on)
+
     return access_token
 
 
@@ -668,5 +678,25 @@ def service_to_service_access_token():
         requesting the access token
 
     '''
-    # TODO: Cache the token.
-    return request_service_to_service_access_token()
+    # Get the token from the cache.
+    token_obj = model.service_to_service_access_token()
+
+    if token_obj is None:
+        # There's no cached access token yet.
+        token = request_service_to_service_access_token()
+    else:
+        token = token_obj.token
+        expires_on = token_obj.expires_on
+        now = calendar.timegm(time.gmtime())
+        five_minutes = 60*5
+        try:
+            expires_on_int = int(expires_on)
+        except ValueError:
+            raise ServiceToServiceAccessTokenError(
+                "Couldn't convert expires_on time to int")
+
+        if now > (expires_on_int - five_minutes):
+            # The cached token is expired, or expiring within 5 minutes.
+            token = request_service_to_service_access_token()
+
+    return token
