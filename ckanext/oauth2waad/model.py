@@ -18,7 +18,7 @@ class ServiceToServiceAccessToken(object):
 def define_service_to_service_access_token_table():
     global service_to_service_access_token_table
     service_to_service_access_token_table = sqlalchemy.Table(
-        'harvest_source', ckan.model.meta.metadata,
+        'service_to_service_access_token', ckan.model.meta.metadata,
         sqlalchemy.Column('token', types.UnicodeText, primary_key=True),
         sqlalchemy.Column('expires_on', types.UnicodeText))
     ckan.model.meta.mapper(ServiceToServiceAccessToken,
