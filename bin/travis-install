@@ -13,8 +13,8 @@ sudo -u postgres psql -c 'CREATE DATABASE ckan_test WITH OWNER ckan_default;'
 
 export PIP_USE_MIRRORS=true
 
-BASE_DIR="/home/travis/build/okfn"
-CKAN_DIR="/home/travis/build/okfn/ckan"
+BASE_DIR="/home/travis/build/ckan"
+CKAN_DIR="/home/travis/build/ckan/ckan"
 
 # Install CKAN
 cd $BASE_DIR
