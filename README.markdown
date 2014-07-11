@@ -1,6 +1,8 @@
 ckanext-oauth2waad
 ==================
 
+[![Build Status](https://travis-ci.org/ckan/ckanext-oauth2waad.svg?branch=master)](https://travis-ci.org/ckan/ckanext-oauth2waad)
+
 A CKAN extension that lets you log in to a CKAN site using
 [Windows Azure Active Directory's implementation of OAuth 2.0](http://msdn.microsoft.com/en-us/library/azure/dn645545.aspx).
 
