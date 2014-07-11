@@ -22,19 +22,17 @@ ckan.model.meta.mapper(ServiceToServiceAccessToken,
                        service_to_service_access_token_table)
 
 
+def setup():
+    if not service_to_service_access_token_table.exists():
+        service_to_service_access_token_table.create()
+
+
 def service_to_service_access_token():
     '''Return the service-to-service access token cached in the db, or None.'''
 
     try:
         query = ckan.model.Session.query(ServiceToServiceAccessToken)
         token = query.one()
-    except sqlalchemy.exc.ProgrammingError as exc:
-        if exc.orig.pgcode == '42P01':
-            service_to_service_access_token_table.create()
-            ckan.model.Session.commit()
-            token = None
-        else:
-            raise
     except sqlalchemy.orm.exc.NoResultFound:
         token = None
     return token

@@ -280,6 +280,10 @@ class OAuth2WAADPlugin(plugins.SingletonPlugin):
         '''Update CKAN's config with settings needed by this plugin.'''
         toolkit.add_template_directory(config, 'templates')
 
+        # Create the DB tables on startup if not there
+        model.setup()
+
+
     def configure(self, config):
         '''Read this plugin's config settings from the config file.'''
         # We don't actually need to get the config settings here,
