@@ -62,6 +62,13 @@ def _csrf_secret():
     return _get_config_setting_or_crash('ckanext.oauth2waad.csrf_secret')
 
 
+def _service_to_service_auth_token_endpoint():
+    '''Return the WAAD auth token endpoint to be used for service to service
+       calls.'''
+    return _get_config_setting_or_crash(
+            'ckanext.oauth2waad.servicetoservice.auth_token_endpoint')
+
+
 def _service_to_service_client_id():
     '''Return the WAAD service-to-service client_id from the config file.'''
     return _get_config_setting_or_crash(
@@ -284,6 +291,7 @@ class OAuth2WAADPlugin(plugins.SingletonPlugin):
         _waad_auth_token_endpoint()
         _waad_resource()
         _csrf_secret()
+        _service_to_service_auth_token_endpoint()
         _service_to_service_resource()
         _service_to_service_client_id()
         _service_to_service_client_secret()
@@ -655,8 +663,10 @@ def request_service_to_service_access_token():
     '''
     # Get a new token from WAAD.
     access_token, expires_on = _request_service_to_service_access_token(
-        _waad_auth_token_endpoint(), _service_to_service_client_id(),
-        _service_to_service_client_secret(), _service_to_service_resource())
+        _service_to_service_auth_token_endpoint(),
+        _service_to_service_client_id(),
+        _service_to_service_client_secret(),
+        _service_to_service_resource())
 
     # Cache the token, overwriting any already-cached copy.
     model.save_service_to_service_access_token(access_token, expires_on)

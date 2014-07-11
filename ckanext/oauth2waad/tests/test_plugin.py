@@ -1249,7 +1249,7 @@ def test_request_service_to_service_access_token(
     # Mock pylons.config.
     def getitem(key):
         d = {
-            'ckanext.oauth2waad.auth_token_endpoint': 'auth token endpoint',
+            'ckanext.oauth2waad.servicetoservice.auth_token_endpoint': 'auth token endpoint',
             'ckanext.oauth2waad.servicetoservice.client_id': 'client id',
             'ckanext.oauth2waad.servicetoservice.client_secret': 'secret',
             'ckanext.oauth2waad.servicetoservice.resource': 'resource',
@@ -1279,7 +1279,7 @@ def test_request_service_to_service_access_token_with_missing_config(
 
     # Mock pylons.config.
     config = {
-        'ckanext.oauth2waad.auth_token_endpoint': 'auth token endpoint',
+        'ckanext.oauth2waad.servicetoservice.auth_token_endpoint': 'auth token endpoint',
         'ckanext.oauth2waad.servicetoservice.client_id': 'client id',
         'ckanext.oauth2waad.servicetoservice.client_secret': 'secret',
         'ckanext.oauth2waad.servicetoservice.resource': 'resource',
@@ -1290,7 +1290,7 @@ def test_request_service_to_service_access_token_with_missing_config(
 
     # Test for each of the config settings that the function uses.
     for key in (
-            'ckanext.oauth2waad.auth_token_endpoint',
+            'ckanext.oauth2waad.servicetoservice.auth_token_endpoint',
             'ckanext.oauth2waad.servicetoservice.client_id',
             'ckanext.oauth2waad.servicetoservice.client_secret',
             'ckanext.oauth2waad.servicetoservice.resource'):
@@ -1324,7 +1324,7 @@ def test_request_service_to_service_access_token_with_exception(
     # Mock pylons.config.
     def getitem(key):
         d = {
-            'ckanext.oauth2waad.auth_token_endpoint': 'auth token endpoint',
+            'ckanext.oauth2waad.servicetoservice.auth_token_endpoint': 'auth token endpoint',
             'ckanext.oauth2waad.servicetoservice.client_id': 'client id',
             'ckanext.oauth2waad.servicetoservice.client_secret': 'secret',
             'ckanext.oauth2waad.servicetoservice.resource': 'resource',

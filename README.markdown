@@ -35,6 +35,7 @@ Add the following settings to the `[app:main]` section of your config file:
     ckanext.oauth2waad.auth_token_endpoint = https://login.windows.net/<YOUR_TENANT_ID>/oauth2/token
     ckanext.oauth2waad.resource = <YOUR_RESOURCE_URL>
     ckanext.oauth2waad.csrf_secret = <YOUR_SECRET_KEY>
+    ckanext.oauth2waad.servicetoservice.auth_token_endpoint = https://login.windows.net/<SERVICE_TO_SERVICE_TENANT_ID>/oauth2/token
     ckanext.oauth2waad.servicetoservice.client_id = <YOUR_CLIENT_ID_FOR_SERVICE_TO_SERVICE_REQUESTS>
     ckanext.oauth2waad.servicetoservice.client_secret = <YOUR_CLIENT_SECRET_FOR_SERVICE_TO_SERVICE_REQUESTS>
     ckanext.oauth2waad.servicetoservice.resource = <YOUR_RESOURCE_FOR_SERVICE_TO_SERVICE_REQUESTS>
