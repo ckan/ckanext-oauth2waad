@@ -957,9 +957,9 @@ class TestWAADRedirectController:
     def test_login(self):
         response = _do_login(self.app)
 
-        assert response.html.find('a', title='View profile').find(
-            class_='username').text == 'fake given_name fake family_name', (
-            "We should be logged-in")
+        assert (response.html.find('a', title='View profile').find(
+            'span', {'class': 'username'}).text ==
+            'fake given_name fake family_name'), ("We should be logged-in")
 
         # Webtest doesn't seem to actually delete the cookie from the test app,
         # but it sets its value to an empty string.
