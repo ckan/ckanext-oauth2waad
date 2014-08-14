@@ -22,6 +22,7 @@ class OAuth2WAADConfigError(Exception):
     '''Exception that's raised if an oauth2waad config setting is missing.'''
     pass
 
+
 def _get_config_setting_or_crash(key):
     try:
         return pylons.config[key]
@@ -81,10 +82,26 @@ def _service_to_service_client_secret():
             'ckanext.oauth2waad.servicetoservice.client_secret')
 
 
-def _service_to_service_resource():
+def _service_to_service_resource(resource=None):
     '''Return the WAAD service-to-service resource from the config file.'''
-    return _get_config_setting_or_crash(
-            'ckanext.oauth2waad.servicetoservice.resource')
+    # return the first in the list if no resource is provided
+    if not resource:
+        return _get_config_setting_or_crash(
+            'ckanext.oauth2waad.servicetoservice.resource').split()[0]
+
+    resources = dict(zip(
+        _get_config_setting_or_crash(
+            'ckanext.oauth2waad.servicetoservice.resource_names').split(),
+        _get_config_setting_or_crash(
+             'ckanext.oauth2waad.servicetoservice.resource').split()
+        )
+    )
+    try:
+        return resources[resource]
+    except KeyError:
+        message = ("ckanext-oauth2waad: no resource '{resource}' in"
+                   "ckanext.oauth2waad.servicetoservice_resource_name")
+        raise OAuth2WAADConfigError(message.format(resource=resource))
 
 
 def _generate_state_param():
@@ -656,7 +673,7 @@ def _request_service_to_service_access_token(endpoint, client_id,
     return (access_token, expires_on)
 
 
-def request_service_to_service_access_token():
+def request_service_to_service_access_token(resource):
     '''Get a service-to-service access token from WAAD and return it.
 
     This function will re-do the access token request each time it's called.
@@ -670,15 +687,16 @@ def request_service_to_service_access_token():
         _service_to_service_auth_token_endpoint(),
         _service_to_service_client_id(),
         _service_to_service_client_secret(),
-        _service_to_service_resource())
+        _service_to_service_resource(resource))
 
     # Cache the token, overwriting any already-cached copy.
-    model.save_service_to_service_access_token(access_token, expires_on)
+    model.save_service_to_service_access_token(resource, access_token, 
+                                               expires_on)
 
     return access_token
 
 
-def service_to_service_access_token():
+def service_to_service_access_token(resource):
     '''Return the WAAD service-to-service access token.
 
     This function will cache the access token, and only re-do the access token
@@ -690,11 +708,11 @@ def service_to_service_access_token():
 
     '''
     # Get the token from the cache.
-    token_obj = model.service_to_service_access_token()
+    token_obj = model.service_to_service_access_token(resource)
 
     if token_obj is None:
         # There's no cached access token yet.
-        token = request_service_to_service_access_token()
+        token = request_service_to_service_access_token(resource)
     else:
         token = token_obj.token
         expires_on = token_obj.expires_on
@@ -708,6 +726,6 @@ def service_to_service_access_token():
 
         if now > (expires_on_int - five_minutes):
             # The cached token is expired, or expiring within 5 minutes.
-            token = request_service_to_service_access_token()
+            token = request_service_to_service_access_token(resource)
 
     return token

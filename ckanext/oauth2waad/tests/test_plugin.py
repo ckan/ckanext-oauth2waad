@@ -1252,7 +1252,8 @@ def test_request_service_to_service_access_token(
             'ckanext.oauth2waad.servicetoservice.auth_token_endpoint': 'auth token endpoint',
             'ckanext.oauth2waad.servicetoservice.client_id': 'client id',
             'ckanext.oauth2waad.servicetoservice.client_secret': 'secret',
-            'ckanext.oauth2waad.servicetoservice.resource': 'resource',
+            'ckanext.oauth2waad.servicetoservice.resource': 'http://resource',
+            'ckanext.oauth2waad.servicetoservice.resource_names': 'resource',
         }
         return d[key]
     mock_pylons_config.__getitem__.side_effect = getitem
@@ -1261,11 +1262,11 @@ def test_request_service_to_service_access_token(
     mock_service_to_service_access_token_function.return_value = (
         'access_token', 'expires_on')
 
-    token = plugin.request_service_to_service_access_token()
+    token = plugin.request_service_to_service_access_token('resource')
 
     assert token == 'access_token'
     mock_service_to_service_access_token_function.assert_called_once_with(
-        'auth token endpoint', 'client id', 'secret', 'resource')
+        'auth token endpoint', 'client id', 'secret', 'http://resource')
 
 
 @mock.patch('pylons.config')
@@ -1303,7 +1304,8 @@ def test_request_service_to_service_access_token_with_missing_config(
 
         nose.tools.assert_raises(
             plugin.OAuth2WAADConfigError,
-            plugin.request_service_to_service_access_token)
+            plugin.request_service_to_service_access_token,
+            'fake_resource_1')
 
         # Put the setting back, for the next iteration.
         config[key] = value
@@ -1327,7 +1329,8 @@ def test_request_service_to_service_access_token_with_exception(
             'ckanext.oauth2waad.servicetoservice.auth_token_endpoint': 'auth token endpoint',
             'ckanext.oauth2waad.servicetoservice.client_id': 'client id',
             'ckanext.oauth2waad.servicetoservice.client_secret': 'secret',
-            'ckanext.oauth2waad.servicetoservice.resource': 'resource',
+            'ckanext.oauth2waad.servicetoservice.resource': 'http://resource',
+            'ckanext.oauth2waad.servicetoservice.resource_names': 'resource',
         }
         return d[key]
     mock_pylons_config.__getitem__.side_effect = getitem
@@ -1337,7 +1340,8 @@ def test_request_service_to_service_access_token_with_exception(
 
     nose.tools.assert_raises(
         plugin.ServiceToServiceAccessTokenError,
-        plugin.request_service_to_service_access_token)
+        plugin.request_service_to_service_access_token,
+        'resource')
 
 
 def _reset_db():
@@ -1371,7 +1375,7 @@ def test_service_to_service_access_token_db_table_does_not_exist():
         return (200, headers, body)
     httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
 
-    token = plugin.service_to_service_access_token()
+    token = plugin.service_to_service_access_token('fake_resource_1')
 
     assert token == 'fake access_token', (
         "service_to_service_access_token() should return the access token "
@@ -1407,7 +1411,8 @@ def test_service_to_service_access_token_expiring_soon():
     now = _now()
     three_minutes = 60 * 3
     old_expires_on = str(now + three_minutes)
-    model.save_service_to_service_access_token('old access token',
+    model.save_service_to_service_access_token('fake_resource_1',
+                                               'old access token',
                                                old_expires_on)
 
     # Mock the WAAD server.
@@ -1423,7 +1428,7 @@ def test_service_to_service_access_token_expiring_soon():
         return (200, headers, body)
     httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
 
-    token = plugin.service_to_service_access_token()
+    token = plugin.service_to_service_access_token('fake_resource_1')
 
     assert token == 'new access_token', (
         "service_to_service_access_token() should return the access token "
@@ -1433,6 +1438,9 @@ def test_service_to_service_access_token_expiring_soon():
     assert len(rows) == 1, (
         "There should never be more than one row in the "
         "service_to_service_access_token db table")
+    assert rows[0].resource == 'fake_resource_1', (
+        "service_to_service_access_token() should update the cached access "
+        "token in the db")
     assert rows[0].token == 'new access_token', (
         "service_to_service_access_token() should update the cached access "
         "token in the db")
@@ -1457,7 +1465,8 @@ def test_service_to_service_access_token_expired():
     now = _now()
     three_minutes = 60 * 3
     old_expires_on = str(now - three_minutes)
-    model.save_service_to_service_access_token('old access token',
+    model.save_service_to_service_access_token('fake_resource_1',
+                                               'old access token',
                                                old_expires_on)
 
     # Mock the WAAD server.
@@ -1473,7 +1482,7 @@ def test_service_to_service_access_token_expired():
         return (200, headers, body)
     httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
 
-    token = plugin.service_to_service_access_token()
+    token = plugin.service_to_service_access_token('fake_resource_1')
 
     assert token == 'new access_token', (
         "service_to_service_access_token() should return the access token "
@@ -1483,6 +1492,9 @@ def test_service_to_service_access_token_expired():
     assert len(rows) == 1, (
         "There should never be more than one row in the "
         "service_to_service_access_token db table")
+    assert rows[0].resource == 'fake_resource_1', (
+        "service_to_service_access_token() should update the cached access "
+        "token in the db")
     assert rows[0].token == 'new access_token', (
         "service_to_service_access_token() should update the cached access "
         "token in the db")
@@ -1503,7 +1515,8 @@ def test_service_to_service_access_token_cached():
     now = _now()
     one_hour = 60 * 60
     expires_on = str(now + one_hour)
-    model.save_service_to_service_access_token('cached access token',
+    model.save_service_to_service_access_token('resource',
+                                               'cached access token',
                                                expires_on)
 
     # Mock the WAAD server.
@@ -1514,7 +1527,7 @@ def test_service_to_service_access_token_cached():
                       "WAAD server if there is a good cached access token")
     httpretty.register_uri(httpretty.POST, endpoint, body=request_callback)
 
-    token = plugin.service_to_service_access_token()
+    token = plugin.service_to_service_access_token('resource')
 
     assert token == 'cached access token', (
         "service_to_service_access_token() should return the cached token")
@@ -1529,9 +1542,11 @@ def test_service_to_service_access_token_bad_expires_on(
     import ckanext.oauth2waad.model as model
 
     mock_service_to_service_access_token_function.return_value = (
-        model.ServiceToServiceAccessToken('access token',
+        model.ServiceToServiceAccessToken('resource',
+                                          'access token',
                                           'invalid expires_on string'))
 
     nose.tools.assert_raises(
         plugin.ServiceToServiceAccessTokenError,
-        plugin.service_to_service_access_token)
+        plugin.service_to_service_access_token,
+        'fake_resource_1')
