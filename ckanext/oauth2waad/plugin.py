@@ -485,15 +485,16 @@ def _get_user_details_from_waad(auth_code, client_id, redirect_uri, resource,
         raise InvalidAccessTokenResponse("Couldn't decode the JWT payload")
     family_name = jwt_payload.get('family_name')
     given_name = jwt_payload.get('given_name')
-    oid = jwt_payload.get('oid')
+    upn = jwt_payload.get('upn')
 
     return {
         'access_token': waad_access_token,
         'refresh_token': waad_refresh_token,
         'expires_on': waad_expires_on,
-        'oid': oid,
+        'upn': upn,
         'given_name': given_name,
         'family_name': family_name,
+
         }
 
 
@@ -503,7 +504,7 @@ class CouldNotCreateUserException(Exception):
     pass
 
 
-def _log_the_user_in(access_token, refresh_token, expires_on, oid, given_name,
+def _log_the_user_in(access_token, refresh_token, expires_on, upn, given_name,
                      family_name, session):
     '''Log the user into CKAN, creating an account for them if necessary.
 
@@ -518,7 +519,7 @@ def _log_the_user_in(access_token, refresh_token, expires_on, oid, given_name,
     :param expires_on: The time when the access token expires, given in seconds
         since the UNIX epoch
 
-    :param oid: The user's OID (object identifier) from WAAD. This will be used
+    :param upn: The user's OID (object identifier) from WAAD. This will be used
         as the unique user name for the user's CKAN account.
 
     :param given_name: The user's given name. This will be used for the full
@@ -537,7 +538,7 @@ def _log_the_user_in(access_token, refresh_token, expires_on, oid, given_name,
         user for the authorized WAAD user fails.
 
     '''
-    user = _get_user(oid)
+    user = _get_user(upn)
 
     if user:
         # TODO: If the user has changed their given name, family name, or
@@ -558,7 +559,7 @@ def _log_the_user_in(access_token, refresh_token, expires_on, oid, given_name,
         try:
             user = toolkit.get_action('user_create')(
                 context={'ignore_auth': True},
-                data_dict={'name': oid,
+                data_dict={'name': upn,
                         'fullname': fullname,
                         'password': _generate_password(),
                         'email': 'foo'})
