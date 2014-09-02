@@ -1,4 +1,5 @@
 '''This extension's plugin classes and their immediate helper functions.'''
+import logging
 import uuid
 import urllib
 import calendar
