@@ -405,7 +405,7 @@ class OAuth2WAADPlugin(plugins.SingletonPlugin):
 def _get_user(name):
     '''Return the CKAN user with the given user name, or None.'''
     try:
-        user = toolkit.get_action('user_show')(data_dict = {'id': name})
+        user = toolkit.get_action('user_show')(data_dict = {'id': name.lower()})
         return user
     except toolkit.ObjectNotFound:
         return None
