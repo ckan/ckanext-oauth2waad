@@ -450,6 +450,7 @@ def _get_user_details_from_waad(auth_code, client_id, redirect_uri, resource,
     # TODO: Handle timeouts, failed requests.
     response = requests.post(endpoint, data=data)
     try:
+        response.raise_for_status()
         response_json = response.json()
     except simplejson.scanner.JSONDecodeError:
         raise InvalidAccessTokenResponse(
