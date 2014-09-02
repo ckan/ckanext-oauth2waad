@@ -459,6 +459,7 @@ def _get_user_details_from_waad(auth_code, client_id, redirect_uri, resource,
     except requests.exceptions.RequestException, e:
         log.debug('request url: {}'.format(endpoint))
         log.debug('request data: {}'.format(str(data)))
+        log.debug('exception : {}'.format(str(e)))
         raise e
 
     try:
