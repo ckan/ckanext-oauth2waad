@@ -18,6 +18,10 @@ import ckan.lib.helpers as helpers
 import ckanext.oauth2waad.model as model
 
 
+log = logging.getLogger(__name__)
+requests.packages.urllib3.add_stderr_logger()
+
+
 class OAuth2WAADConfigError(Exception):
     '''Exception that's raised if an oauth2waad config setting is missing.'''
     pass
@@ -451,6 +455,12 @@ def _get_user_details_from_waad(auth_code, client_id, redirect_uri, resource,
     response = requests.post(endpoint, data=data)
     try:
         response.raise_for_status()
+    except requests.exceptions.RequestExceptions, e:
+        log.debug('request url: {}'.format(endpoint))
+        log.debug('request data: {}'.format(str(data)))
+        raise e
+
+    try:
         response_json = response.json()
     except simplejson.scanner.JSONDecodeError:
         raise InvalidAccessTokenResponse(
