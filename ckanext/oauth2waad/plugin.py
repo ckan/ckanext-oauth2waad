@@ -109,6 +109,17 @@ def _service_to_service_resource(resource=None):
         raise OAuth2WAADConfigError(message.format(resource=resource))
 
 
+def _create_user_on_login():
+    '''Return whether to automatically create users on login defaults to
+    true'''
+    try:
+        return toolkit.as_bool(
+            pylons.config['ckanext.oauth2waad.create_users_on_login']
+        )
+    except KeyError:
+        return True
+
+
 def _generate_state_param():
     '''Return a state parameter for an authorization code request.
 
@@ -517,6 +528,12 @@ class CouldNotCreateUserException(Exception):
     pass
 
 
+class CouldNotFindUserException(Exception):
+    '''The exception that is raised when a CKAN user does not existfor a given
+    WAAD user.'''
+    pass
+
+
 def _log_the_user_in(access_token, refresh_token, expires_on, upn, given_name,
                      family_name, session):
     '''Log the user into CKAN, creating an account for them if necessary.
@@ -550,6 +567,8 @@ def _log_the_user_in(access_token, refresh_token, expires_on, upn, given_name,
     :raises: :py:class:`CouldNotCreateUserException` if creating a new CKAN
         user for the authorized WAAD user fails.
 
+    :raises: :py:class:`CouldNotCreateUserException` if creating a new CKAN
+        user for the authorized WAAD user fails.
     '''
     user = _get_user(upn)
 
@@ -561,23 +580,26 @@ def _log_the_user_in(access_token, refresh_token, expires_on, upn, given_name,
 
     else:
         # The user doesn't exist in CKAN yet, create it.
+        if _create_user_on_login():
+            fullname = '{given_name} {family_name}'.format(
+                given_name=given_name, family_name=family_name)
 
-        fullname = '{given_name} {family_name}'.format(
-            given_name=given_name, family_name=family_name)
+            # FIXME: CKAN requires emails for user accounts, but we don't have an
+            # email for the user from WAAD. Can we get one somehow?
+            email = 'foo'
 
-        # FIXME: CKAN requires emails for user accounts, but we don't have an
-        # email for the user from WAAD. Can we get one somehow?
-        email = 'foo'
+            try:
+                user = toolkit.get_action('user_create')(
+                    context={'ignore_auth': True},
+                    data_dict={'name': upn,
+                            'fullname': fullname,
+                            'password': _generate_password(),
+                            'email': 'foo'})
+            except Exception as e:
+                raise CouldNotCreateUserException(e)
+        else:
+            raise CouldNotFindUserException(upn)
 
-        try:
-            user = toolkit.get_action('user_create')(
-                context={'ignore_auth': True},
-                data_dict={'name': upn,
-                        'fullname': fullname,
-                        'password': _generate_password(),
-                        'email': 'foo'})
-        except Exception as e:
-            raise CouldNotCreateUserException(e)
 
     session['ckanext-oauth2waad-user'] = user['name']
     session['ckanext-oauth2waad-access-token'] = access_token
@@ -626,6 +648,14 @@ class WAADRedirectController(toolkit.BaseController):
             message = toolkit._(
                 "Creating your CKAN user account failed: {error}".format(
                     error=exc))
+            helpers.flash(message, category='alert-error', allow_html=True,
+                            ignore_duplicate=True)
+            toolkit.redirect_to(controller='user', action='login')
+        except CouldNotFindUserException as exc:
+            message = toolkit._(
+                "The CKAN account for your Windows Azure AD"
+                "user does not exist"
+            )
             helpers.flash(message, category='alert-error', allow_html=True,
                             ignore_duplicate=True)
             toolkit.redirect_to(controller='user', action='login')
