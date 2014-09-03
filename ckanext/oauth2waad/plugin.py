@@ -113,7 +113,7 @@ def _create_user_on_login():
     '''Return whether to automatically create users on login defaults to
     true'''
     try:
-        return toolkit.as_bool(
+        return toolkit.asbool(
             pylons.config['ckanext.oauth2waad.create_users_on_login']
         )
     except KeyError:
