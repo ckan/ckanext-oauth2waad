@@ -653,7 +653,7 @@ class WAADRedirectController(toolkit.BaseController):
             toolkit.redirect_to(controller='user', action='login')
         except CouldNotFindUserException as exc:
             message = toolkit._(
-                "The CKAN account for your Windows Azure AD"
+                "The CKAN account for your Windows Azure AD "
                 "user does not exist"
             )
             helpers.flash(message, category='alert-error', allow_html=True,
