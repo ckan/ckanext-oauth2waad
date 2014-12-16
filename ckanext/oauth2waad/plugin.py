@@ -471,7 +471,19 @@ def _get_user_details_from_waad(auth_code, client_id, redirect_uri, resource,
         log.debug('request url: {}'.format(endpoint))
         log.debug('request data: {}'.format(str(data)))
         log.debug('exception : {}'.format(str(e)))
-        raise e
+
+        # Check if it's a meaningful error from WAAD
+        msg = str(e)
+        try:
+            response_json = response.json()
+            if response_json.get('error') or response_json.get('error_description'):
+                msg += ', Error: {0}, Error Description: {1}'.format(
+                        response_json.get('error'),
+                        response_json.get('error_description'))
+        except simplejson.scanner.JSONDecodeError:
+            pass
+
+        raise InvalidAccessTokenResponse(msg)
 
     try:
         response_json = response.json()
@@ -637,10 +649,17 @@ class WAADRedirectController(toolkit.BaseController):
         if not _csrf_check(pylons.request, pylons.response, _csrf_secret()):
             toolkit.abort(401)
 
-        # TODO: Handle InvalidAccessTokenResponse exceptions.
-        details = _get_user_details_from_waad(
-            waad_auth_code, _waad_client_id(), _waad_redirect_uri(),
-            _waad_resource(), _waad_auth_token_endpoint())
+        try:
+            details = _get_user_details_from_waad(
+                waad_auth_code, _waad_client_id(), _waad_redirect_uri(),
+                _waad_resource(), _waad_auth_token_endpoint())
+        except InvalidAccessTokenResponse as exc:
+            message = toolkit._(
+                "Error getting user details from Windows Azure AD: {error}"
+                .format(error=exc))
+            helpers.flash(message, category='alert-error', allow_html=True,
+                            ignore_duplicate=True)
+            toolkit.redirect_to(controller='user', action='login')
 
         try:
             user = _log_the_user_in(session=pylons.session, **details)
@@ -734,7 +753,7 @@ def request_service_to_service_access_token(resource):
         _service_to_service_resource(resource))
 
     # Cache the token, overwriting any already-cached copy.
-    model.save_service_to_service_access_token(resource, access_token, 
+    model.save_service_to_service_access_token(resource, access_token,
                                                expires_on)
 
     return access_token
